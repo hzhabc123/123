@@ -26,19 +26,33 @@ class BacktestEngine:
         self.broker = broker
 
         self.risk_manager = risk_manager
-    
+
+    def sync_strategy_position(self, symbol):
+        """
+        以组合实际持仓为准，回写策略内部 position，
+        保证信号被风控拒绝时策略状态也能正确回滚
+        """
+        position = self.portfolio.positions.get(symbol)
+        self.strategy.position = (
+            position.volume if position else 0
+        )
+
     def process_signal(self, signal):
 
         if not signal:
             return
 
         if not self.risk_manager.validate(signal):
+            self.sync_strategy_position(signal.symbol)
             return
 
         trade = self.broker.execute_signal(signal)
 
         if trade:
+
             self.portfolio.on_trade(trade)
+
+            self.sync_strategy_position(signal.symbol)
 
     def run(
         self,
