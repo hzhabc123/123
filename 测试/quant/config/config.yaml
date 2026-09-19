@@ -1,0 +1,26 @@
+# config/config.yaml
+# 量化回测运行配置示例（P0-7 可复现性）
+
+# 本次运行唯一标识（可自定义，便于区分多次回测）
+run_id: "demo_run_001"
+
+# 策略名称
+strategy: "ma_cross"
+
+# 标的代码
+symbol: "301313"
+
+# 回测区间
+start: "2024-01-01"
+end: "2024-12-31"
+
+# 均线参数
+fast_period: 5
+slow_period: 20
+
+# 随机种子（保证可复现）
+seed: 42
+
+# 数据文件列表（相对于 data/ 目录）
+data_files:
+  - "301313.txt"
