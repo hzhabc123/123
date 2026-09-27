@@ -3,6 +3,7 @@ title: Quant V2 配置 / 测试 / 错误码
 version: 2.0
 tags: [量化, 配置, 测试, pytest, 错误码, 异常, RiskConfig, 数据源配置, 验收]
 summary: 系统配置项（含数据源、风控、示例脚本）、测试清单与验收标准、异常/错误码体系与排查速查表。
+aliases: ['配置', '测试', '错误码', '异常', 'pytest', '验收', '排查', 'config']
 ---
 
 # Quant V2 配置 / 测试 / 错误码

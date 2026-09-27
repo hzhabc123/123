@@ -3,6 +3,7 @@ title: Quant V2 知识库导入指引
 version: 2.0
 tags: [量化, 知识库, 扣子, 导入, RAG, 上传]
 summary: 将 docs/ 下的 Quant V2 文档导入扣子空间知识库的操作指引、每文件一句话简介、建议的切分与命名方式。
+aliases: ['知识库', '导入', '扣子空间', 'RAG', '上传', 'kb', 'coze']
 ---
 
 # Quant V2 知识库导入指引

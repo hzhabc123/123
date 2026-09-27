@@ -3,6 +3,7 @@ title: Quant V2 组合 / 经纪商 / 引擎
 version: 2.0
 tags: [量化, Portfolio, Broker, Engine, 账本, 撮合, 成交回调, 主循环, 资金结算]
 summary: 组合管理（持仓/账户/账本）、经纪商（撮合/费用/成交）、回测引擎主循环三者的职责、协作方式与资金结算口径。
+aliases: ['组合', '经纪商', '引擎', 'Portfolio', 'Broker', 'Engine', '账本', '资金结算', '撮合']
 ---
 
 # Quant V2 组合 / 经纪商 / 引擎

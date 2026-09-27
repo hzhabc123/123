@@ -3,6 +3,7 @@ title: Quant V2 FAQ 与术语表
 version: 2.0
 tags: [量化, FAQ, 术语表, 问题排查, 速查, 回测, RAG]
 summary: 高频问题速答（成交时点、0成交、防前视、信号与下单区别、指标口径等）与完整术语表，RAG 问答首选入口。
+aliases: ['FAQ', '术语表', '常见问题', '速查', '问答', 'glossary', '词典']
 ---
 
 # Quant V2 FAQ 与术语表

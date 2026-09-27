@@ -3,6 +3,7 @@ title: Quant V2 绩效 / 优化
 version: 2.0
 tags: [量化, 绩效, 夏普, 最大回撤, 胜率, 盈亏比, alpha, beta, 网格搜索, WalkForward, PerformanceMetrics]
 summary: PerformanceAnalyzer 全部指标的精确口径（公式）、PerformanceMetrics 字段、报告生成与 Optimizer 参数搜索方式。
+aliases: ['绩效', '指标', '夏普', 'Sharpe', '回撤', '胜率', '网格搜索', 'WalkForward', '优化', 'PerformanceMetrics']
 ---
 
 # Quant V2 绩效 / 优化

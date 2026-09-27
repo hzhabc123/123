@@ -3,6 +3,7 @@ title: Quant V2 风控 / 仓位 / 止损
 version: 2.0
 tags: [量化, 风控, 仓位, 止损, 资金截断, 单笔限额, max_drawdown, RiskConfig]
 summary: 风控校验顺序、RiskConfig 各参数含义与触发、仓位计算方法、止损管理方式及常见踩坑（高价股限额）。
+aliases: ['风控', '仓位', '止损', 'RiskConfig', '单笔限额', '资金截断', '高价股', 'max_drawdown']
 ---
 
 # Quant V2 风控 / 仓位 / 止损

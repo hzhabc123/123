@@ -3,6 +3,7 @@ title: Quant V2 接口与签名
 version: 2.0
 tags: [量化, 接口, 签名, API, DataManager, BacktestEngine, 策略基类, 风控, 仓位]
 summary: 各层核心类的构造签名、关键方法参数与返回，方便开发时直接调用或实现扩展。
+aliases: ['接口', '签名', 'API', 'interfaces', '方法', '参数', '调用方式']
 ---
 
 # Quant V2 接口与签名

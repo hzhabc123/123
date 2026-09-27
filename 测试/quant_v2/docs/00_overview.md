@@ -3,6 +3,7 @@ title: Quant V2 系统总览
 version: 2.0
 tags: [量化, 回测, 架构, 数据流, 模块划分, quant_v2]
 summary: Quant V2 量化回测系统的整体架构、模块分层与完整数据流，用于快速定位各模块职责与协作关系。
+aliases: ['系统总览', 'overview', '架构', '模块划分', '数据流', '量化系统', 'quant_v2简介']
 ---
 
 # Quant V2 系统总览

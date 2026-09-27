@@ -3,6 +3,7 @@ title: Quant V2 领域模型
 version: 2.0
 tags: [量化, 领域模型, Bar, Signal, Order, Trade, Position, Account, Instrument, Event]
 summary: 定义 Bar、Signal、Order、Trade、Position、Account、Instrument、Event 等核心对象及其职责、关键字段与生命周期。
+aliases: ['领域模型', 'domain', 'Bar', 'K线', '信号', 'Signal', '订单', 'Order', '成交', 'Trade', '持仓', 'Position', '账户', '合约', 'Instrument']
 ---
 
 # Quant V2 领域模型
