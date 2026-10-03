@@ -1,6 +1,6 @@
 ---
 title: Quant V2 知识库导入指引
-version: 2.1
+version: 2.2
 tags: [量化, 知识库, 扣子, 导入, RAG, 上传]
 summary: 将 docs/ 下的 Quant V2 文档导入扣子空间知识库的操作指引、每文件一句话简介、建议的切分与命名方式。
 aliases: ['知识库', '导入', '扣子空间', 'RAG', '上传', 'kb', 'coze']
@@ -46,6 +46,7 @@ aliases: ['知识库', '导入', '扣子空间', 'RAG', '上传', 'kb', 'coze']
 | `09_config_testing` | 配置体系、测试验收、错误码排查表 |
 | `10_faq_glossary` | 12 条 FAQ + 完整术语表 |
 | `11_visualization` | 可视化回测系统：Recorder 记录、指标口径一致、买卖点分离、HTML 导出 |
+| `12_market_timing_booster` | 底部/顶部区间增强模块：十三类信号源共振 + 10分评分卡 + 可直接复制的提示词片段 |
 | `KNOWLEDGE_UPLOAD` | 本指引 |
 
 ## 4. 建议（可选增强）
