@@ -14,8 +14,10 @@ from timing.scorer import TimingScorer, ScoreResult
 from timing.probability import (
     kelly_fraction, ProbabilityCalibrator, bayesian_update, position_by_level
 )
+from timing.adaptive import AdaptiveWeight
 
 __all__ = [
     "TimingScorer", "ScoreResult",
     "kelly_fraction", "ProbabilityCalibrator", "bayesian_update", "position_by_level",
+    "AdaptiveWeight",
 ]
