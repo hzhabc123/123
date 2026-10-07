@@ -29,10 +29,6 @@ from timing.scorer import TimingScorer, CATEGORY_KEYS
 from timing.probability import ProbabilityCalibrator
 
 
-class _CategoryMeta(type):
-    pass
-
-
 def _categorize_signal(name: str) -> str:
     """由信号名推断类目（中文，与 CATEGORY_KEYS 值一致）"""
     for key, cn in CATEGORY_KEYS.items():
