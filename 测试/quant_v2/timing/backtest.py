@@ -13,6 +13,8 @@ Quant V2 择时区间命中率验证器（timing/backtest）
     - 顶部信号命中 = 未来最低价跌到 entry*(1-target_pct)（见顶回落），
       失败 = 最高价涨过 entry*(1+stop_pct)。
   统计各档位命中率，喂给 ProbabilityCalibrator → 得到经验命中率 → 动态调权。
+
+输出：按档位/方向分组的命中率、样本数，及校准结果。
 """
 
 from __future__ import annotations
@@ -82,8 +84,9 @@ class IntervalBacktest:
         self.calibrator = ProbabilityCalibrator()
 
     def _signal_input(self, bars: List, t: int) -> SignalInput:
+        """用 t 之前 lookback 根构造 SignalInput（严格不偷看 t 之后）"""
         start = max(0, t - self.lookback + 1)
-        win = bars[start:t + 1]
+        win = bars[start:t + 1]  # 含 t
         closes = np.array([b.close for b in win], dtype=float)
         highs = np.array([b.high for b in win], dtype=float)
         lows = np.array([b.low for b in win], dtype=float)
@@ -91,6 +94,7 @@ class IntervalBacktest:
         return SignalInput(closes=closes, highs=highs, lows=lows, volumes=volumes)
 
     def _judge(self, bars, t: int, direction: str, entry: float) -> tuple:
+        """未来 horizon 内判定命中。返回 (hit, hit=False; 触发价)"""
         horizon = min(self.horizon, len(bars) - 1 - t)
         if horizon <= 0:
             return False, entry, "无未来数据"
@@ -103,7 +107,7 @@ class IntervalBacktest:
             if lo <= entry * (1 - self.stop_pct):
                 return False, lo, f"止损 低见{lo:.2f}"
             return False, lo, "区间内未达标"
-        else:
+        else:  # top
             if lo <= entry * (1 - self.target_pct):
                 return True, lo, f"见顶回落 低见{lo:.2f}"
             if hi >= entry * (1 + self.stop_pct):
@@ -111,6 +115,12 @@ class IntervalBacktest:
             return False, hi, "区间内未达标"
 
     def run(self, bars: List, externals_fn=None) -> IntervalBacktestResult:
+        """
+        跑区间命中率回测。
+
+        externals_fn: 可选，调用方提供的外部信号函数 externals_fn(t, bars) -> dict，
+                      传给 build_signal_items 的 externals。
+        """
         records: List[HitRecord] = []
         for t in range(self.lookback, len(bars)):
             if len(bars) - 1 - t <= 0:
@@ -119,6 +129,7 @@ class IntervalBacktest:
             externals = externals_fn(t, bars) if externals_fn else None
             items = build_signal_items(inp, externals=externals)
             res = self.scorer.score(items)
+            # 底/顶任一达到触发分
             if res.bottom_score >= self.min_score:
                 hit, out_p, reason = self._judge(bars, t, "bottom", bars[t].close)
                 cats = list(res.details.get("bottom", {}).keys())
@@ -133,33 +144,11 @@ class IntervalBacktest:
                                 bars[t].close, hit, out_p, reason, cats)
                 records.append(rec)
                 self.calibrator.record(f"顶部-{res.level}", hit)
+        # 汇总按档位
         level_stats: Dict[str, dict] = {}
         for r in records:
             key = f"{r.direction}-{r.level}"
             st = level_stats.setdefault(key, {"hits": 0, "total": 0})
             st["total"] += 1
             st["hits"] += 1 if r.hit else 0
-        return IntervalBacktestResult(records, level_stats)"""
-
-@dataclass
-class HitRecord:
-    """一次区间信号及其结果"""
-    index: int
-    dt: object
-    direction: str       # bottom / top
-    level: str           # 高/中/低（命中前档位）
-    entry_price: float
-    hit: bool
-    out_price: float
-    reason: str
-
-    def __init__(self, index, dt, direction, level, entry_price, hit, out_price, reason="", hit_categories=None):
-        self.index = index
-        self.dt = dt
-        self.direction = direction
-        self.level = level
-        self.entry_price = entry_price
-        self.hit = hit
-        self.out_price = out_price
-        self.reason = reason
-        self.hit_categories = hit_categories or []
+        return IntervalBacktestResult(records, level_stats)
