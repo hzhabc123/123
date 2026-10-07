@@ -25,8 +25,20 @@ from typing import Dict, List, Optional
 import numpy as np
 
 from timing.signals import build_signal_items, SignalInput
-from timing.scorer import TimingScorer
+from timing.scorer import TimingScorer, CATEGORY_KEYS
 from timing.probability import ProbabilityCalibrator
+
+
+class _CategoryMeta(type):
+    pass
+
+
+def _categorize_signal(name: str) -> str:
+    """由信号名推断类目（中文，与 CATEGORY_KEYS 值一致）"""
+    for key, cn in CATEGORY_KEYS.items():
+        if name.startswith(cn) or cn in name:
+            return cn
+    return "other"
 
 
 @dataclass
@@ -38,7 +50,7 @@ class HitRecord:
     level: str           # 高/中/低（命中前档位）
     entry_price: float
     hit: bool            # 命中?
-    out_price: float     # 触发 hp/LP 的价格
+    out_price: float     # 触发 hi/lo 的价格
     reason: str = ""
     hit_categories: List[str] = field(default_factory=list)  # 触发该方向得分的类目
 
@@ -47,14 +59,20 @@ class HitRecord:
 class IntervalBacktestResult:
     records: List[HitRecord]
     level_stats: Dict[str, dict] = field(default_factory=dict)
+    category_stats: Dict[str, dict] = field(default_factory=dict)
 
     def as_dict(self) -> dict:
         return {
             "total_signals": len(self.records),
             "level_stats": self.level_stats,
+            "category_stats": self.category_stats,
             "hit_rate": {
                 k: (v["hits"] / v["total"] if v["total"] else 0.0)
                 for k, v in self.level_stats.items()
+            },
+            "category_hit_rate": {
+                k: (v["hits"] / v["total"] if v["total"] else 0.0)
+                for k, v in self.category_stats.items()
             },
         }
 
@@ -94,7 +112,7 @@ class IntervalBacktest:
         return SignalInput(closes=closes, highs=highs, lows=lows, volumes=volumes)
 
     def _judge(self, bars, t: int, direction: str, entry: float) -> tuple:
-        """未来 horizon 内判定命中。返回 (hit, hit=False; 触发价)"""
+        """未来 horizon 内判定命中。返回 (hit, 触发价, 说明)"""
         horizon = min(self.horizon, len(bars) - 1 - t)
         if horizon <= 0:
             return False, entry, "无未来数据"
@@ -122,6 +140,7 @@ class IntervalBacktest:
                       传给 build_signal_items 的 externals。
         """
         records: List[HitRecord] = []
+        category_stats: Dict[str, dict] = {}
         for t in range(self.lookback, len(bars)):
             if len(bars) - 1 - t <= 0:
                 continue
@@ -129,6 +148,22 @@ class IntervalBacktest:
             externals = externals_fn(t, bars) if externals_fn else None
             items = build_signal_items(inp, externals=externals)
             res = self.scorer.score(items)
+            # 类目级独立判定：对每个命中的信号项（hit=1）单独以未来 horizon 判定，
+            # 不同类目信号出现在不同时点 → 类目命中率自然差异化。
+            for it in items:
+                if not it.hit:
+                    continue
+                direction = self.scorer._bias(it.name)
+                if direction == "neutral":
+                    continue
+                cat = _categorize_signal(it.name)
+                if cat == "other":
+                    continue
+                cat_hit, _, _ = self._judge(bars, t, direction, bars[t].close)
+                key = f"{cat}-{direction}"
+                st = category_stats.setdefault(key, {"hits": 0, "total": 0})
+                st["total"] += 1
+                st["hits"] += 1 if cat_hit else 0
             # 底/顶任一达到触发分
             if res.bottom_score >= self.min_score:
                 hit, out_p, reason = self._judge(bars, t, "bottom", bars[t].close)
@@ -151,4 +186,4 @@ class IntervalBacktest:
             st = level_stats.setdefault(key, {"hits": 0, "total": 0})
             st["total"] += 1
             st["hits"] += 1 if r.hit else 0
-        return IntervalBacktestResult(records, level_stats)
+        return IntervalBacktestResult(records, level_stats, category_stats)
