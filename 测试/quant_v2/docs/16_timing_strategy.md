@@ -2,7 +2,6 @@
 title: 择时策略接入回测引擎（TimingStrategy）
 version: "1.1"
 domain: 量化回测 / 择时 / 策略 / 引擎集成 / 可视化
-version: "1.1"
 tags: [quant, timing, strategy, engine, backtest, visualization]
 aliases:
   - TimingStrategy
@@ -143,6 +142,7 @@ B 的季度调整无从验证对错。
 ```bash
 python3 scripts/plot_timing_signals.py              # 合成数据
 python3 scripts/plot_timing_signals.py 600519       # 真实行情
+python3 scripts/plot_timing_signals.py 600519 60 180  # 指定触发窗（bar 范围）
 ```
 
 输出自包含 HTML `timing_signals_{symbol}_*.html`，三层标注：
