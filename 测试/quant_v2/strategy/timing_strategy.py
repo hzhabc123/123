@@ -33,7 +33,7 @@ class TimingStrategy(BaseStrategy):
       direction_mode  "both" 双向 / "long" 仅做多
       weights         Optional[Dict[str, float]]：静态权重表（{"类目-bottom":w}）
       weights_provider 可选 callable(bar, index, bars) -> Dict[str,float]，每 bar 当期权重
-      lookback        打分用历史 bar 数
+      target_pct      无需（由信号方向与评分决定）
     """
 
     def __init__(self, name: str = "TimingStrategy",
@@ -55,6 +55,7 @@ class TimingStrategy(BaseStrategy):
         self.lows: List[float] = []
         self.volumes: List[float] = []
         self._last_indicator: dict = {}
+        self._trigger_events: List[dict] = []
 
     # ---- 权重注入（供 engine / 外部调用） ----
     def set_weights(self, weights: Dict[str, float]):
@@ -68,6 +69,44 @@ class TimingStrategy(BaseStrategy):
     # ---- 指标快照（供可视化上报） ----
     def indicator_values(self) -> dict:
         return dict(self._last_indicator)
+
+    # ---- 触发事件记录（path A：可视化标注信号的"前后"） ----
+    # trigger_type:
+    #   bottom_enter  空仓 + bottom_score>=min → 做多触发（绿三角）
+    #   top_exit      持仓 + top_score>=min   → 获利了结触发（红三角）
+    #   top_no_pos    空仓 + top_score>=min   → 顶部但空仓，仅观望（记录供诊断）
+    def _record_trigger(self, trigger_type: str, bar, res, strength: float):
+        """记录触发事件（运行期只存 index，forward_return 由 get_trigger_events 事后回填）"""
+        self._trigger_events.append({
+            "symbol": bar.symbol,
+            "datetime": bar.datetime,
+            "index": len(self.closes) - 1,          # 触发所在 bar 索引（0-based）
+            "trigger_type": trigger_type,
+            "price_at_signal": float(bar.close),     # 触发时收盘价
+            "bottom_score": res.bottom_score,
+            "top_score": res.top_score,
+            "level": res.level,
+            "strength": strength,
+        })
+
+    def get_trigger_events(self, annotate: bool = True,
+                           horizons=(5, 10, 20)) -> List[dict]:
+        """
+        返回全部触发事件；annotate=True 时回填 forward_return_{h}（事后标注，不偷看未来）。
+
+        annotate：基于已累积的完整 closes 计算"触发后第 h 根收盘相对触发价收益"，
+        用于可视化图层上标注信号质量（事后，不影响回测本身）。
+        """
+        events = list(self._trigger_events)
+        if annotate and self.closes:
+            c = self.closes
+            for ev in events:
+                i = ev["index"]
+                for h in horizons:
+                    j = i + h
+                    ev[f"forward_return_{h}"] = (
+                        (c[j] / c[i] - 1.0) if j < len(c) else None)
+        return events
 
     # ---- 核心逻辑 ----
     def on_bar(self, bar):
@@ -115,6 +154,9 @@ class TimingStrategy(BaseStrategy):
         # 空仓且达到底部阈值 → 做多
         if current_position == 0 and res.bottom_score >= self.min_score:
             strength = min(1.0, res.bottom_score / 10.0)
+            self._record_trigger("bottom_enter", bar, res, strength)
+            self._last_indicator["trigger_type"] = "bottom_enter"
+            self._last_indicator["price_at_signal"] = float(bar.close)
             # qty=0 表示交给 engine 的 position_sizer 决定（适配高价股/风险预算）
             self.buy(symbol=symbol, price=bar.close, qty=0,
                      reason=f"底部区间 score={res.bottom_score}/{res.level} "
@@ -123,6 +165,9 @@ class TimingStrategy(BaseStrategy):
         # 已达底部阈值但已持仓 → 允许加仓信号（由外部风控决定），这里保持观望避免重复
         if current_position > 0 and res.top_score >= self.min_score and self.direction_mode in ("both", "long"):
             strength = min(1.0, res.top_score / 10.0)
+            self._record_trigger("top_exit", bar, res, strength)
+            self._last_indicator["trigger_type"] = "top_exit"
+            self._last_indicator["price_at_signal"] = float(bar.close)
             # 顶部区间 + 已持仓 → 获利了结（卖出）
             self.sell(symbol=symbol, price=bar.close,
                       qty=current_position,
@@ -131,8 +176,13 @@ class TimingStrategy(BaseStrategy):
             return
         if current_position == 0 and res.top_score >= self.min_score and self.direction_mode == "both":
             strength = min(1.0, res.top_score / 10.0)
+            self._record_trigger("top_no_pos", bar, res, strength)
             # 空仓 + 顶部区间（both 模式）→ 不做空（A股），仅观望
+            self._last_indicator["trigger_type"] = "top_no_pos"
             self._last_indicator["note"] = f"顶部区间但空仓，仅观望 score={res.top_score}"
+            return
+        # 其余情况：观察（无触发）
+        self._last_indicator["trigger_type"] = "no_signal"
 
     def _get_position_qty(self, symbol: str) -> float:
         """读取当前持仓数量"""
