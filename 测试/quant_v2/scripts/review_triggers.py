@@ -70,6 +70,7 @@ def market_state(closes, i, win=25, up_thr=0.02, vol_thr=0.03):
     pre = sum(seg[:half]) / half
     post = sum(seg[half:]) / (len(seg) - half)
     drift = post / pre - 1.0
+    # 波动率：seg 内日收益标准差
     import numpy as np
     a = np.array(seg)
     vol = float(np.std(np.diff(a) / a[:-1])) if len(a) > 1 else 0.0
@@ -80,9 +81,9 @@ def market_state(closes, i, win=25, up_thr=0.02, vol_thr=0.03):
 
 def predict_mode(ev, closes, late_rise=0.06):
     """
-    规则预判失败模式。
+    规则预判失败模式（人工复核前的参考，非最终命中判定）。
 
-    orientation: 买点期望涨(+1)，卖点期望跌(-1)，signed 收益应>0 为对。
+    orientation：买点期望涨(+1)，卖点期望跌(-1)，signed 收益应>0 为对。
     """
     direction = ev["trigger_type"]
     orientation = 1 if direction == "bottom_enter" else -1
@@ -94,6 +95,7 @@ def predict_mode(ev, closes, late_rise=0.06):
     s20 = orientation * f20
 
     if s5 > 0 and s20 > 0:
+        # 方向对；判断是否过晚：触发价相对近期低点已涨幅过大
         i = ev["index"]
         win = closes[max(0, i - 20):i]
         if win:
@@ -107,6 +109,97 @@ def predict_mode(ev, closes, late_rise=0.06):
     if s5 > 0 >= s20:
         return FAKE, f"先对{s5*100:+.1f}%后收回{s20*100:+.1f}%"
     return TREND_SEG, f"s5={s5*100:+.1f}% s20={s20*100:+.1f}% 同向下跌"
+
+
+# ---- 冻结命中标准（多标的对照用同一把尺子，勿改） ----
+# 命中 = 触发后 horizon 根内，收盘朝预期方向移动 >= k*ATR，且未先触达反向 k*ATR。
+# 该标准独立于规则引擎预判，避免"规则先验判定 -> 命中率"的循环论证。
+ATR_N = 14          # ATR 计算窗口
+HIT_K = 2.0         # 目标幅度倍数（>=2x ATR 才记命中）
+HIT_HORIZON = 20    # 观察窗口（根）
+HIT_MIN_SAMPLES = 10  # 某市场状态样本量低于此则不参与汇总/标记仅供参考
+
+
+def calc_atr(closes, n=ATR_N):
+    """Wilder ATR（简化用差分范围近似，够用）"""
+    import numpy as np
+    a = np.array(closes, dtype=float)
+    if len(a) < n + 1:
+        return 0.0
+    tr = np.abs(np.diff(a))
+    return float(tr[-n:].mean()) if len(tr) >= n else 0.0
+
+
+def std_hit(ev, closes, atr, k=HIT_K, horizon=HIT_HORIZON):
+    """
+    冻结标准命中判定。
+
+    返回 (bool, note)：True=命中，False=未命中/数据不足。
+    买点(direction=1)期望涨：触发后 horizon 根内收盘 >= entry + k*atr；
+    途中若先收盘 <= entry - k*atr 视为先反向止损。
+    卖点(direction=-1)反之。
+    """
+    direction = 1 if ev["trigger_type"] == "bottom_enter" else -1
+    i = ev["index"]
+    if atr <= 0 or i >= len(closes) - 1:
+        return False, "数据不足"
+    entry = closes[i]
+    target = entry + direction * k * atr
+    also = entry - direction * k * atr  # 反向触发位
+    for j in range(i + 1, min(len(closes), i + 1 + horizon)):
+        c = closes[j]
+        if direction > 0:
+            if c >= target:
+                return True, f"{k}×ATR朝上达标"
+            if c <= also:
+                return False, f"先反向止损"
+        else:
+            if c <= target:
+                return True, f"{k}×ATR朝下达标"
+            if c >= also:
+                return False, f"先反向止损"
+    return False, f"{horizon}内未达{k}×ATR"
+
+
+def random_baseline(closes, n_starts, direction, atr, k=HIT_K,
+                    horizon=HIT_HORIZON, seed=0, rng=None):
+    """
+    同标的"随机入场 + 持有 horizon 根"的基准命中率。
+
+    随机选 n_starts 个入场点（避开尾部不足 horizon 的），按给定方向
+    （买点期望涨 / 卖点期望跌）用同一冻结标准判定，返回命中率。
+    用于区分"策略真有效" vs "高波动标的做多本身胜率高"。
+    """
+    import random as _r, numpy as np
+    r = _r.Random(seed) if rng is None else rng
+    n = len(closes)
+    lo, hi = 0, n
+    if n > horizon:
+        lo = 0; hi = n - horizon
+    if hi <= lo:
+        return 0.0
+    hits = 0
+    for _ in range(n_starts):
+        i = r.randrange(lo, hi)
+        entry = closes[i]
+        target = entry + direction * k * atr
+        also = entry - direction * k * atr
+        ok = False
+        for j in range(i + 1, min(n, i + 1 + horizon)):
+            c = closes[j]
+            if direction > 0:
+                if c >= target:
+                    ok = True; break
+                if c <= also:
+                    break
+            else:
+                if c <= target:
+                    ok = True; break
+                if c >= also:
+                    break
+        if ok:
+            hits += 1
+    return hits / n_starts
 
 
 def main():
@@ -142,44 +235,74 @@ def main():
 
     print(f"===== 触发点失败模式归类（{source}，{len(events)} 事件）=====")
     tname = {"bottom_enter": "底部做多", "top_exit": "顶部了结", "top_no_pos": "顶空仓"}
+    atr = calc_atr(closes)
     results = []
     for n, e in enumerate(events):
-        mode, note = predict_mode(e, closes)
+        mode, note = predict_mode(e, closes)          # 规则引擎参考预判
         st = market_state(closes, e["index"])
+        hit, hit_note = std_hit(e, closes, atr)        # 冻结标准命中判定
         verdict = mode
         if interactive:
             print(f"\n[{n+1}/{len(events)}] {e['datetime']} | {tname[e['trigger_type']]} "
                   f"@{e['price_at_signal']:.2f} | 底分{e['bottom_score']} 顶分{e['top_score']} | 市场:{st}")
             f5, f10, f20 = (e.get(f"forward_return_{h}") for h in (5, 10, 20))
             print(f"  fwd5={f5*100:+.1f}% fwd10={f10*100:+.1f}% fwd20={f20*100:+.1f}%  预判[{MODE_LABELS[mode]}] {note}")
+            print(f"  冻结标准命中: {'✓' if hit else '✗'} {hit_note} "
+                  f"(k={HIT_K}×ATR={HIT_K*atr:.3f}, {HIT_HORIZON}根)")
             vals = {k: str(i) for i, k in enumerate([HIT, EARLY, LATE, FAKE, TREND_SEG, BLOCKED])}
             ans = input(f"  确认或改标 [{HIT}(0)]: ").strip()
             if ans:
                 for k, v in vals.items():
                     if ans in (v, k):
                         verdict = k; break
-        results.append({**e, "market_state": st, "mode": verdict,
-                        "mode_note": note, "source": source})
+        results.append({**e, "market_state": st, "mode": verdict, "mode_note": note,
+                        "std_hit": hit, "std_hit_note": hit_note,
+                        "atr": round(atr, 4), "hit_std": f"k={HIT_K}×ATR/{HIT_HORIZON}根",
+                        "source": source})
 
+    # ---- 失败模式归类分布（诊断参考） ----
     from collections import Counter
     dist = Counter(r["mode"] for r in results)
-    print("\n===== 失败模式分布 =====")
-    hit_n = dist.get(HIT, 0)
-    hit_rate = hit_n / len(results)
+    print("\n===== 失败模式归类分布（诊断参考，非命中依据）=====")
     for m, c in dist.most_common():
         print(f"  {MODE_LABELS[m]:<16} {c:>3}  ({c/len(results)*100:4.1f}%)")
-    print(f"  命中率(hit占比): {hit_rate*100:.1f}%  ({hit_n}/{len(results)})")
 
-    print("\n===== 按市场状态分组 =====")
+    # ---- 命中率：冻结标准 + 随机基准对照 ----
+    n_ev = len(results)
+    n_hit = sum(1 for r in results if r["std_hit"])
+    print(f"\n===== 命中率（冻结标准 k={HIT_K}×ATR/{HIT_HORIZON}根，非规则引擎预判）=====")
+    print(f"  策略命中率: {n_hit}/{n_ev} = {n_hit/n_ev*100:.1f}%" if n_ev else "  无事件")
+    if atr > 0:
+        for dname, dval in [("做多", 1), ("做空", -1)]:
+            n_dir = [r for r in results if r["trigger_type"] ==
+                     ("bottom_enter" if dval == 1 else "top_exit")]
+            if not n_dir:
+                continue
+            base = random_baseline(closes, max(200, len(n_dir) * 10), dval, atr,
+                                   seed=symbol if symbol else "SYN")
+            d_hits = sum(1 for r in n_dir if r["std_hit"])
+            print(f"  {dname} 策略={d_hits}/{len(n_dir)}={d_hits/len(n_dir)*100:.1f}%  "
+                  f"随机基准={base*100:.1f}%  "
+                  f"优势={(d_hits/len(n_dir)-base)*100:+.1f}pp")
+
+    # ---- 按市场状态分组（样本<10 仅供参考）----
+    print(f"\n===== 按市场状态分组（样本<{HIT_MIN_SAMPLES} 仅供参考，不参与汇总）=====")
     by_state = {}
     for r in results:
-        by_state.setdefault(r["market_state"], []).append(r["mode"])
-    for st, modes in by_state.items():
-        d = Counter(modes)
-        h = d.get(HIT, 0)
-        print(f"  {st:<5} n={len(modes):>2}  hit={h}/{len(modes)} "
-              f"({h/len(modes)*100:.0f}%)  " +
-              "  ".join(f"{MODE_LABELS[m][:4]}={c}" for m, c in d.most_common()[:4]))
+        by_state.setdefault(r["market_state"], []).append(r)
+    summable = []
+    for st, rs in sorted(by_state.items()):
+        n = len(rs)
+        h = sum(1 for r in rs if r["std_hit"])
+        flag = "  ⚠️样本不足，仅供参考" if n < HIT_MIN_SAMPLES else ""
+        print(f"  {st:<5} n={n:>3}  hit={h}/{n} ({h/n*100:.0f}%){flag}")
+        if n >= HIT_MIN_SAMPLES:
+            summable.append(h / n)
+    if summable:
+        avg = sum(summable) / len(summable)
+        print(f"  有效状态数={len(summable)}，简单均值(仅样本足态)={avg*100:.1f}%")
+    else:
+        print("  无样本足量的市场状态，命中率不可汇总")
 
     if out_path:
         with open(out_path, "w", encoding="utf-8") as f:

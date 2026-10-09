@@ -110,12 +110,14 @@ engine.run(bars)
 ```bash
 python3 -m pytest tests/test_timing_strategy.py -q         # 策略集成 4 用例
 python3 -m pytest tests/test_timing_signal_snapshot.py -q  # 快照字段 5 用例
-python3 -m pytest tests/test_review_triggers.py -q         # 失败模式预判 8 用例
+python3 -m pytest tests/test_review_triggers.py -q         # 失败模式预判+冻结标准 14 用例
+python3 -m pytest tests/test_compare_trigger_reviews.py -q # 多标的对照 3 用例
 ```
 
 覆盖：engine 中产生交易、指标快照口径、权重影响评分、高价股整手适配、
-触发事件字段完整性、forward_return 事后标注正确性、失败模式预判规则。
-全套 125 passed。
+触发事件字段完整性、forward_return 事后标注正确性、失败模式预判规则、
+冻结标准命中判定、随机入场基准、多标的横向对照。
+全套 134 passed。
 
 ## 打分触发点可视化（path A，诊断工具）
 
@@ -188,10 +190,66 @@ python3 scripts/review_triggers.py 600519 --out report.json # 结果存档
 
 规则引擎预判 + 交互确认 + 分布表（按失败模式 + 市场状态分组）。
 
-**茅台 2023–2024 实测（min_score=3，26 事件）**：命中率仅 **7.7%**，
-失败模式高度集中在 **过晚 38.5% + 过早 34.6%**。说明该标的回调浅、慢牛滞后，
-底部信号晚于实际低点——需调低阈值/换高波动标的验证，而非调权重。
-> ⚠️ 单标的低命中正当预期（茅台不适合择时验证），勿据此调整权重；B 前置仍未满足。
+**茅台 2023–2024 实测（min_score=3，26 事件）**：规则引擎预判命中仅 **7.7%**
+（过晚 38.5% + 过早 34.6% 高度集中）。但该数字是**规则引擎自判**（循环论证风险）——
+
+**冻结标准命中率：策略 53.8%（14/26）**，方向分裂明显（方向仅统计
+bottom_enter 做多 / top_exit 做空，top_no_pos 顶空仓不参与方向命中）：
+- 做多 2/10=20%，随机基准 ~37% → **劣于随机买卖 17pp**
+- 做空 1/3=33%，随机基准 ~63% → **劣于随机 30pp**（样本极小，仅供参考）
+
+> ⚠️ 单标的样本小（区间态仅 3 点，样本不足仅供参考），且茅台回调浅不适宜择时验证。
+> 在 `--interactive` 人工复核完成、且与规则引擎判定差异 ≤30% 前，上述数字
+> **不作为决策依据**，结论为"信号质量尚未经验证"，而非"命中率太低"。
+
+## 命中判定标准（冻结基准，多标的可比前提）
+
+> 目的：多标的对照必须用**同一把尺子**，否则高波动标的天然更容易达标（波动率红利），
+> 交叉比较失真。此标准在人工复核确认后**冻结**，后续所有标的共用。
+
+| 常量 | 值 | 含义 |
+|------|-----|------|
+| `ATR_N` | 14 | Wilder ATR 窗口（用差分范围近似） |
+| `HIT_K` | 2.0 | 目标倍数：触发后 20 根内收盘朝预期方向 ≥ 2×ATR |
+| `HIT_HORIZON` | 20 | 判定窗口（根） |
+| `HIT_MIN_SAMPLES` | 10 | 市场状态最少样本；不足 → "样本不足，仅供参考"，不参与汇总 |
+
+**命中定义**：`触发后 HIT_HORIZON 根内，收盘朝预期方向移动 ≥ HIT_K×ATR，
+且未先触发反向（朝反方向 k×ATR 止损）`。
+
+- 方向：`bottom_enter`（做多）期望涨；`top_exit`（做空）期望跌；`top_no_pos`（顶空仓）
+  不参与方向命中统计（compare 表已排除）。
+- **随机入场基准**：同标的随机选 start 个入场点、持有 horizon 根、同一冻结标准判定，
+  得基准命中率。**只有策略命中率显著高于同标的随机基准（≥10pp），才算该方向策略有效**，
+  否则可能是"高波动标的做多本身胜率高"的波动率红利。
+- `review_triggers.py` 输出含 `std_hit` / `atr` / `hit_std` 字段；输出 JSON 供
+  `compare_trigger_reviews.py` 跨标的汇总。
+
+```bash
+python3 scripts/review_triggers.py 600519 --out outputs/review_600519.json
+python3 scripts/compare_trigger_reviews.py 600519 300750 512880 588000
+```
+
+### 多标的对照结果（2023–2025，冻结标准）
+
+| 标的 | 方向 | n | 策略命中 | 随机基准 | 优势 | verdict |
+|------|------|---|---------|---------|------|---------|
+| 600519 茅台 | 做多 | 10 | 20% | 37% | −17pp | 🔴 |
+| | 做空 | 3 | 33% | 63% | −30pp | 🔴(样本小) |
+| 300750 宁德 | 做多 | 6 | 17% | 48% | −31pp | 🔴 |
+| | 做空 | 5 | 60% | 50% | +10pp | 🟡 |
+| 512880 券商ETF | 做多 | 4 | 75% | 39% | **+36pp** | ✅ |
+| | 做空 | 3 | 33% | 56% | −22pp | 🔴 |
+| 588000 科创50 | 做多 | 2 | 0% | 38% | −38pp | 🔴(样本小) |
+| | 做空 | 1 | 0% | 60% | −60pp | 🔴(样本小) |
+
+**关键结论（正是方法论点位的实证）**：高波动标的的**绝对命中率并不天然虚高**——
+科创50 做多 0%、宁德做多 17%，反而低于茅台做多 20%。真正的问题是**策略在多数
+方向/标的上跑不赢随机基准**（唯一显著的仅是券商ETF做多 +36pp，且样本仅 4）。
+这说明当前 `bottom_score` 做多信号的超额信息在 4 个标的上整体不成立，
+**不指向调权，指向先做 `--interactive` 人工复核**确认规则引擎与人工判定差异是否
+≤30%，再据此决定是调判定标准还是调阈值/过滤（ADX/量能确认）。详见
+`outputs/multi_trigger_review.md`。
 
 ## 权重季度自校正（path B，先别动权重）
 
@@ -228,8 +286,11 @@ python3 scripts/review_triggers.py 600519 --out report.json # 结果存档
 | scripts/timing_strategy_backtest.py | 端到端演示 |
 | scripts/plot_timing_signals.py | 触发点可视化（三层标注 HTML） |
 | scripts/review_triggers.py | 失败模式归类工具（预判+交互+分布表） |
+| scripts/compare_trigger_reviews.py | 多标的命中对照表（含随机基准列） |
+| data/akshare_source.py | akshare 数据源（含新浪 ETF 回退） |
 | tests/test_timing_signal_snapshot.py | 快照字段完整性 |
-| tests/test_review_triggers.py | 失败模式预判规则引擎 |
+| tests/test_review_triggers.py | 失败模式预判规则引擎 + 冻结标准命中 |
+| tests/test_compare_trigger_reviews.py | 多标的对照表渲染 |
 
 后续（按优先级）：
 - ✅ 打分触发点接入可视化记录层（图上标注底/顶，path A）
