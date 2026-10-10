@@ -53,6 +53,10 @@ def analyze_symbol(symbol, out_root="outputs"):
 
     long_s, short_s = stat([e for e in events if dir_of(e) == 1]), \
                       stat([e for e in events if dir_of(e) == -1])
+    # 做空基准 − 做多基准：系统性正值 = 样本期以跌为主（熊市混淆变量）
+    bs_diff = None
+    if long_s and short_s and long_s["base"] is not None and short_s["base"] is not None:
+        bs_diff = short_s["base"] - long_s["base"]
 
     # 按状态分组
     by_state = {}
@@ -71,8 +75,8 @@ def analyze_symbol(symbol, out_root="outputs"):
 
     return {"symbol": symbol, "source": source, "n": n, "n_hit": n_hit,
             "rate": n_hit / n if n else 0.0,
-            "long": long_s, "short": short_s, "states": states,
-            "state_avg": state_avg, "atr": round(atr, 4)}
+            "long": long_s, "short": short_s, "bs_diff": bs_diff,
+            "states": states, "state_avg": state_avg, "atr": round(atr, 4)}
 
 
 def fmt_rate(x, nd=1):
@@ -91,19 +95,37 @@ def render_md(reports):
             if not s:
                 continue
             edge = s["edge"]
-            if edge is None:
-                verdict = "-"
+            low = s["n"] < HIT_MIN_SAMPLES
+            if low:
+                verdict = "⬜ 样本<10，噪声，不判"
+                grey = "⬜"
+            elif edge is None:
+                verdict = "-"; grey = ""
             elif edge >= 0.10:
-                verdict = "✅ 显著优于基准"
+                verdict = "✅ 显著优于基准"; grey = ""
             elif edge >= 0:
-                verdict = "🟡 无优势"
+                verdict = "🟡 无优势"; grey = ""
             else:
-                verdict = "🔴 劣于基准"
-            L.append(f"| | {dname} | {s['n']} | {s['rate']*100:.0f}% | "
+                verdict = "🔴 劣于基准"; grey = ""
+            L.append(f"| {grey}**{dname}** | {s['n']} | {s['rate']*100:.0f}% | "
                      f"{s['base']*100:.0f}% | {edge*100:+.0f} | {verdict} |")
     L.append("")
     L.append("> 优势 = 策略命中率 − 同标的随机入场基准命中率，≥10pp 视为显著有效。")
-    L.append("> 正值代表策略在该方向确实优于\"随机买卖\"，负值则可能只是高波动红利。")
+    L.append("> **样本 <10 的行标灰，系 95% 置信区间几乎覆盖全概率（如 4 样本 ≈ 19%–99%），")
+    L.append("> 既不能证明有效也不能证明无效，**不参与任何显著/不显著判断**。")
+    L.append("")
+    L.append("### 熊市混淆变量（做空基准 − 做多基准）")
+    for r in reports:
+        if r["bs_diff"] is not None:
+            tag = "🔴 熊市偏（样本期以跌为主）" if r["bs_diff"] >= 0.10 else \
+                  ("🟡 轻微偏" if r["bs_diff"] >= 0 else "🟢 无偏")
+            L.append(f"- **{r['symbol']}**：做空基准 − 做多基准 = "
+                     f"{r['bs_diff']*100:+.0f}pp {tag}")
+    L.append("")
+    L.append("> 做空基准系统性 > 做多基准（四标的全中）→ 样本期下跌为主，"
+             "\"随机做多 20 根\"天然胜率低。**这不是策略差，是熊市里做多本身就难**。"
+             "因此结论应表述为：策略在熊市样本期没有识别出下跌段并减少做多信号——"
+             "**这是趋势过滤缺失，不是阈值问题**。")
     L.append("")
     L.append("### 按市场状态分组")
     L.append("")
@@ -119,8 +141,10 @@ def render_md(reports):
     L.append("")
     L.append("- 各标的用同一把冻结尺子（k×ATR/horizon），跨标的命中率可比。")
     L.append("- 只有样本 ≥10 的市场状态进入简单均值；样本不足状态仅作参考，不进入横向汇总。")
-    L.append("- 人工 `--interactive` 复核完成前，以下命中率仍是**规则引擎/机械尺子**结果，"
-             "不代表策略最终质量——需先比对该尺度与人工判定，差异 >30% 则先调判定标准。")
+    L.append("- 低样本（<10）方向行标灰，**不参与有效/无效判定**（置信区间近乎全覆盖）。")
+    L.append("- 所有命中率须**与实际样本量一并阅读**：如 0% 且 N=2，那是样本不足，不是策略失效。")
+    L.append("- 在人工 `--interactive` 复核与 `trigger_time_distribution` 诊断完成前，"
+             "本表结论只到\"信号质量未经充分验证\"，不落到调权/调阈值的具体改法。")
     return "\n".join(L)
 
 

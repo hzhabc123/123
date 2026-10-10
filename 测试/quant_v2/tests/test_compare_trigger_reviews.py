@@ -79,8 +79,8 @@ def test_analyze_excludes_top_no_pos():
 def test_render_md_has_columns():
     """render_md：输出含随机基准列与样本量告警行"""
     reps = [{"symbol": "A", "source": "s", "n": 12, "n_hit": 6, "rate": 0.5,
-             "long": {"n": 6, "hit": 3, "rate": 0.5, "base": 0.4, "edge": 0.1},
-             "short": None, "atr": 0.5,
+             "long": {"n": 12, "hit": 9, "rate": 0.75, "base": 0.4, "edge": 0.35},
+             "short": None, "bs_diff": 0.2, "atr": 0.5,
              "states": [{"state": "趋势", "n": 20, "hit": 10, "rate": 0.5, "enough": True},
                         {"state": "区间", "n": 3, "hit": 1, "rate": 0.33, "enough": False}],
              "state_avg": 0.5}]
