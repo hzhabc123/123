@@ -113,12 +113,14 @@ python3 -m pytest tests/test_timing_signal_snapshot.py -q  # 快照字段 5 用�
 python3 -m pytest tests/test_review_triggers.py -q         # 失败模式预判+冻结标准 14 用例
 python3 -m pytest tests/test_compare_trigger_reviews.py -q # 多标的对照 3 用例
 python3 -m pytest tests/test_trigger_time_distribution.py -q  # 时间分布 4 用例
+python3 -m pytest tests/test_lookback_sensitivity.py -q        # lookback 敏感性 6 用例
 ```
 
 覆盖：engine 中产生交易、指标快照口径、权重影响评分、高价股整手适配、
 触发事件字段完整性、forward_return 事后标注正确性、失败模式预判规则、
-冻结标准命中判定、随机入场基准、多标的横向对照、下跌段占比时间分布。
-全套 138 passed。
+冻结标准命中判定、随机入场基准、多标的横向对照、下跌段占比时间分布、
+lookback 信号稀疏主因诊断。
+全套 144 passed。
 
 ## 打分触发点可视化（path A，诊断工具）
 
@@ -292,6 +294,37 @@ python3 scripts/compare_trigger_reviews.py 600519 300750 512880 588000
 > 先扩样本；茅台单标的的 100% 下跌段可作为"趋势过滤可能有增益"的假设，
 > 但需多标的验证。完整分布见 `outputs/trigger_time_dist.md`。
 
+#### 信号稀疏主因诊断（lookback 敏感性测试）
+
+> 稀疏是**诊断结果**不是样本量问题：某标的几乎不产生信号时（科创50 两年 2 个
+> bottom_enter），扩样本救不了——新标的大概率一样稀。扩样本前先回答
+> "为什么没信号"，而非盲目加标的。
+
+`scripts/lookback_sensitivity.py` 对每标的把 lookback 在 30/45/60/90 各跑一遍，
+看信号数是否随 lookback 递减（→ 参数问题）还是恒定稀疏（→ 阈值/评分问题）：
+
+| 标的 | lb=30 | 45 | 60 | 90 | 诊断 |
+|------|-------|----|----|----|------|
+| 600519 茅台 | **48** | 28 | 10 | 12 | lookback 是稀疏主因 |
+| 300750 宁德 | 5 | 6 | 6 | 6 | 阈值/评分太严（min_score） |
+| 512880 券商ETF | 4 | 3 | 4 | 3 | 阈值/评分太严（min_score） |
+| 588000 科创50 | 3 | 3 | 2 | 2 | 阈值/评分太严（min_score） |
+
+**结论（分标的，无通用参数）**：
+- **茅台：lookback=60 是过度约束**。降 30 信号 10→48，命中率 36%（>60 的 23%）。
+  茅台应改 lookback=30——这正是"lookback 是稀疏主因"猜想的实证，但只对茅台成立。
+- **宁德/券商/科创：三种 lookback 均 <10 → 是 min_score=3 或评分卡太严**，不是
+  lookback 的事，扩样本救不了，先调阈值/评分。
+- **判定门槛**：lookback 主因须满足"30 信号量 ≥10 且 ≥2×90"（真实递减），
+  否则 30→4/90→3 的噪声抖动会误判（已修 + 专项测试）。
+
+> ⚠️ 扩样本前置序（按用户既定，不可跳步）：
+> 1. **先校准尺子**——人工过茅台 10 个 bottom_enter（--interactive），
+>    引擎判定 vs 人判定 >30% 则先改判定标准；尺子未验证前扩样本是用错尺子量更多数据。
+> 2. **再定参数**——按上表：茅台取 lookback=30；宁德/券商/科创改阈值/评分。
+> 3. **最后扩样本**——按"状态配额 × 时间跨度"填标的（趋势/区间/高波动配比 +
+>    跨 2019 牛 / 2021 结构市 / 2022 熊 / 2024 反弹），用 `batch_multi_trigger_review.py`。
+
 ## 权重季度自校正（path B，先别动权重）
 
 前置三件事未完成前，**weights_provider 维持现状**，不为自校正编写/启用逻辑：
@@ -329,11 +362,13 @@ python3 scripts/compare_trigger_reviews.py 600519 300750 512880 588000
 | scripts/review_triggers.py | 失败模式归类工具（预判+交互+分布表） |
 | scripts/compare_trigger_reviews.py | 多标的命中对照表（含样本量/低样本标灰/随机基准/熊市偏差列） |
 | scripts/trigger_time_distribution.py | bottom_enter 按季度+状态打点（诊断是否集中下跌段） |
+| scripts/lookback_sensitivity.py | lookback 30/45/60/90 敏感性测试（信号稀疏主因诊断） |
 | data/akshare_source.py | akshare 数据源（含新浪 ETF 回退） |
 | tests/test_timing_signal_snapshot.py | 快照字段完整性 |
 | tests/test_review_triggers.py | 失败模式预判规则引擎 + 冻结标准命中 |
 | tests/test_compare_trigger_reviews.py | 多标的对照表渲染 |
 | tests/test_trigger_time_distribution.py | 时间分布诊断（下跌段占比/季度打点） |
+| tests/test_lookback_sensitivity.py | lookback 敏感性（稀疏主因判定门槛） |
 
 后续（按优先级）：
 - ✅ 打分触发点接入可视化记录层（图上标注底/顶，path A）
