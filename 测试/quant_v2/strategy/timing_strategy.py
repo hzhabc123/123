@@ -77,11 +77,14 @@ class TimingStrategy(BaseStrategy):
     #   top_no_pos    空仓 + top_score>=min   → 顶部但空仓，仅观望（记录供诊断）
     def _record_trigger(self, trigger_type: str, bar, res, strength: float):
         """记录触发事件（运行期只存 index，forward_return 由 get_trigger_events 事后回填）"""
+        # 命中/未命中的底部类别（来自评级卡 details），供单因子区分度检验（factor_discrimination）
+        bottom_cats = list((res.details or {}).get("bottom", {}).keys())
         self._trigger_events.append({
             "symbol": bar.symbol,
             "datetime": bar.datetime,
             "index": len(self.closes) - 1,          # 触发所在 bar 索引（0-based）
             "trigger_type": trigger_type,
+            "bottom_cats": bottom_cats,             # 命中的底部因子类别（结构/动量/量能/波动/情绪/确认…）
             "price_at_signal": float(bar.close),     # 触发时收盘价
             "bottom_score": res.bottom_score,
             "top_score": res.top_score,
