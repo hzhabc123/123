@@ -115,14 +115,17 @@ python3 -m pytest tests/test_compare_trigger_reviews.py -q # 多标的对照 3 �
 python3 -m pytest tests/test_trigger_time_distribution.py -q  # 时间分布 4 用例
 python3 -m pytest tests/test_lookback_sensitivity.py -q        # lookback 敏感性+评分直方 9 用例
 python3 -m pytest tests/test_factor_discrimination.py -q       # 单因子区分度+共线性+字段 5 用例
+python3 -m pytest tests/test_momentum_significance.py -q       # 动量显著性+bootstrap+状态分层 5 用例
+python3 -m pytest tests/test_pure_momentum_backtest.py -q      # 纯动量基线 vs 评分卡 5 用例
 ```
 
 覆盖：engine 中产生交易、指标快照口径、权重影响评分、高价股整手适配、
 触发事件字段完整性、forward_return 事后标注正确性、失败模式预判规则、
 冻结标准命中判定、随机入场基准、多标的横向对照、下跌段占比时间分布、
 lookback 信号稀疏主因诊断、评分直方（min_score 敏感性）、单因子区分度
-与共线性矩阵、bottom_cats 字段契约。
-全套 152 passed。
+与共线性矩阵、bottom_cats 字段契约、动量显著性 bootstrap、状态分层差异、
+纯动量基线对照。
+全套 162 passed。
 
 ## 打分触发点可视化（path A，诊断工具）
 
@@ -414,6 +417,69 @@ python3 scripts/compare_trigger_reviews.py 600519 300750 512880 588000
 > 决定要不要看）；排序层 = 独立维度因子（连续，决定要不要重仓）。前者的"恒满足/压死"是
 > 特征而非缺陷，不该在排序层里留着。
 
+#### 动量显著性检验（bootstrap，补组内 n + P 值，momentum_significance）
+
+> ⚠️ 上节只报了 +3.3pp 差异，**没报满足/不满足组内 n 也没做显著性**——5 个样本的 +3.3pp
+> 和 30 个样本的 +3.3pp 是两件完全不同的事。重建前必须补：组内 n + bootstrap 置信区间。
+
+`scripts/momentum_significance.py` 对每个因子报 n、差异、bootstrap 2000 次重采样 95%CI、
+P(差>0)、并按 market_state 状态分层（趋势/区间）重算差异：
+
+**茅台（lb=30，48 信号，样本充分）：**
+
+| 因子 | 满足n | 不满n | 差异 | bootstrap 95%CI | P(差>0) | 判定 |
+|------|------|------|------|----------------|---------|------|
+| **动量** | **10** | **38** | +3.3pp | **[+0.1, +6.6]** | **0.98** | **✓ 显著为正（95%CI 不含 0）** |
+| 情绪 | 5 | 43 | +2.8pp | [−1.0, +6.6] | 0.93 | ≈ 不显著（CI 含 0） |
+| 结构 | 44 | 4 | −4.2pp | [−9.1, +0.6] | 0.04 | 非稳健（miss 仅 4） |
+| 波动 | 47 | 1 | −3.9pp | — | — | 恒满足，仅 1 反例 |
+| 确认 | 48 | 0 | — | — | — | 恒满足，定义 bug |
+
+**结论**：动量 10/38 样本、95%CI=[+0.1,+6.6] 不含 0、P=0.98 → **显著为正，重建的地基是实的**。
+情绪虽 +2.8pp 但 CI 含 0，**不能**列为正区分度因子。结构 miss 仅 4，bootstrap CI 横跨 0，
+`−4.2pp` **不稳健**，不能据此判"移除"（见下节状态混淆）。
+
+**状态分层（结构因子状态混淆假设检验）**：茅台 48 信号里 **43 个趋势态、5 个区间态**。
+结构因子在趋势态差异 −4.2pp（39 满足 / 4 不满）；**区间态满足 5、不满 0（单组空）——
+无法比较**。因此"结构因子在震荡市是支撑信号、在趋势市是中继信号"这个假设**方向合理，
+但茅台数据无法证实**（茅台回调浅+慢牛，区间态信号太少）。→ 结构不能直接判"移除"（状态条件化
+可能救它），但"区间里能救"也**没有数据证实**——结论为**样本不足以区分"状态混淆 vs 加错方向"**，
+待扩样本（尤其震荡市标的）后再定，不能现在就把结构砍掉。
+
+**确认因子恒满足=定义 bug，不是"零信息"**：确认 48/48 恒满足（"收盘创新低"在底部场景**天然**
+满足）、共线性 1.00——这是同步/滞后指标的定义错误，不是因子失效。底部"确认"应是**右侧信号**
+（放量阳线、突破颈线、收回布林下轨），这些不会在触发时恒满足，才能提供区分度。重建时**确认层
+的定义要重写**，不是降级为门槛。
+
+#### 纯动量基线（评分卡已退化为单因子，pure_momentum_backtest）
+
+> 四类因子只有动量显著 → 多因子评分卡当前形态 = "一个动量指标 + 一堆噪声"。与其重建复杂评分卡，
+> 先测纯动量：只保留动量类别（其余权重 0），和现有评分卡对照，看复杂度有无产出。
+
+机制：`bottom_score = 各命中底部类别权重加总`。现有=全类别 1.0 + min_score=3；纯动量=
+仅动量 1.0 + min_score=1（动量一命中即触发）。`scripts/pure_momentum_backtest.py` 输出对照。
+
+**茅台（lb=30）：**
+
+| 策略 | bottom_enter | fwd20均值 | fwd20>0比例 |
+|------|-------------|-----------|------------|
+| 现有评分卡(全因子, min_score=3) | 48 | −1.23% | 41.7% |
+| **纯动量(仅动量, min_score=1)** | 31 | **+2.03%** | **54.8%** |
+
+信号重合：两者都触发 10，仅现有 38，仅纯动量 21。
+
+**结论（复杂度无产出，纯动量减信号提质）**：
+- **只保留动量、去掉噪声：信号 48→31（−35%），但 fwd20 从 −1.23% 翻正到 +2.03%（+3.3pp），
+  正收益比例 41.7%→54.8%（+13pp）**。
+- 现有评分卡独家 38 个信号（全因子噪声拖累）平均投产为负；纯动量独家 21 个反而更准。
+- **实锤"当前形态评分卡 = 动量 + 噪声"**——复杂度的产出是**负的**。新因子的增量测试
+  （纯动量 + 新因子 vs 纯动量）才有意义，否则是在为噪声做工程。
+
+> ✅ 据此修正重建策略：**不重建复杂评分卡，先以纯动量为新基线**。本轮四因子诊断已充分回答
+> "重建是优化还是徒劳"——动量显著、其余噪声/反向/设计 bugs，评分卡退化为单因子。下一步按
+> 用户既定顺序：到达纯动量基线（已得到）→ 扩样本到位后测新因子增量（纯动量+下跌斜率/量能/
+> 背离 vs 纯动量）→ 增量显著才进评分卡。重建是最后一步，不是第一步。
+
 #### 评分卡问题汇总（本轮跨四标的的系统性发现）
 
 | 标的 | 问题 | 归属 |
@@ -469,6 +535,8 @@ python3 scripts/compare_trigger_reviews.py 600519 300750 512880 588000
 | scripts/trigger_time_distribution.py | bottom_enter 按季度+状态打点（诊断是否集中下跌段） |
 | scripts/lookback_sensitivity.py | lookback 30/45/60/90 敏感性 + --score-hist 评分直方/min_score 敏感性（信号稀疏主因诊断） |
 | scripts/factor_discrimination.py | 单因子区分度检验（满足 vs 不满足的 fwd20 均值差 + 共线性矩阵，重建前置诊断） |
+| scripts/momentum_significance.py | 动量显著性（组内 n + bootstrap 2000 次 95%CI + P 值 + 状态分层差异） |
+| scripts/pure_momentum_backtest.py | 纯动量基线 vs 现有评分卡回测对照（只保留动量类别信号） |
 | data/akshare_source.py | akshare 数据源（含新浪 ETF 回退） |
 | tests/test_timing_signal_snapshot.py | 快照字段完整性 |
 | tests/test_review_triggers.py | 失败模式预判规则引擎 + 冻结标准命中 |
@@ -476,3 +544,10 @@ python3 scripts/compare_trigger_reviews.py 600519 300750 512880 588000
 | tests/test_trigger_time_distribution.py | 时间分布诊断（下跌段占比/季度打点） |
 | tests/test_lookback_sensitivity.py | lookback 敏感性（稀疏主因判定门槛） |
 | tests/test_factor_discrimination.py | 单因子区分度 + 共线性矩阵 + bottom_cats 字段契约 |
+| tests/test_momentum_significance.py | 动量 bootstrap 显著性 + 状态分层差异 |
+| tests/test_pure_momentum_backtest.py | 纯动量基线 vs 现有评分卡对照 |
+
+后续（按优先级）：
+- ✅ 打分触发点接入可视化记录层（图上标注底/顶，path A）
+- ⏸ weights_provider 季度自校正（path B）——先扩样本 + 分层回测 + 防过拟合，再启用
+- ☐ 与 Donchian、买入持有等基准对比评估（需多标的样本）
