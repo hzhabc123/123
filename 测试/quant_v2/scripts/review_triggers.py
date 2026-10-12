@@ -17,6 +17,7 @@ TimingStrategy 触发点人工验收辅助工具（path A 收紧版）
     python3 scripts/review_triggers.py 600519                  # 预判分布（默认）
     python3 scripts/review_triggers.py 600519 --interactive    # 逐点人工确认
     python3 scripts/review_triggers.py 600519 --out report.json
+    python3 scripts/review_triggers.py 600519 --score-bucket   # 评分-收益单调性（lb=30）
 """
 import sys, os, json
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -202,6 +203,80 @@ def random_baseline(closes, n_starts, direction, atr, k=HIT_K,
     return hits / n_starts
 
 
+def score_bucket(symbol, lookback=30, min_score=3, buckets=(3, 4, 5, 6)):
+    """评分-收益单调性：把 bottom_enter 按 bottom_score 分箱，算每箱 forward_return_20 均值。
+
+    回答的根本问题：评分高低与后续收益有没有相关性？score 高的一箱收益应高于低的一箱，
+    否则评分卡没有区分度——加过滤/调阈值都白搭。
+    """
+    from strategy.timing_strategy import TimingStrategy
+    from engine.backtest_engine import BacktestEngine
+    from portfolio.portfolio import Portfolio
+    from risk.risk_manager import RiskManager, RiskConfig
+    from risk.position_sizer import PercentSizer
+
+    bars, source = load_bars(symbol)
+    strat = TimingStrategy(min_score=min_score, direction_mode="both", lookback=lookback)
+    portfolio = Portfolio(initial_cash=500_000.0)
+    rc = RiskConfig()
+    rc.max_single_trade_amount = 1_000_000.0
+    rc.max_single_trade_ratio = 0.4
+    rc.max_position_ratio = 0.8
+    engine = BacktestEngine(strategy=strat, portfolio=portfolio,
+                            risk_manager=RiskManager(rc),
+                            position_sizer=PercentSizer(percent=0.3, min_amount=1000.0),
+                            symbol=strat.name, lookback=500)
+    engine.run(bars)
+    events = strat.get_trigger_events(annotate=True)
+    bottoms = [e for e in events if e["trigger_type"] == "bottom_enter"
+               and e.get("forward_return_20") is not None]
+    if not bottoms:
+        print(f"[{symbol}] 无 bottom_enter 事件")
+        return
+
+    def bucket_of(sc):
+        for b in buckets:
+            if sc < b:
+                return b
+        return max(buckets) + 1
+
+    from collections import defaultdict
+    agg = defaultdict(lambda: {"n": 0, "sum": 0.0, "vals": []})
+    for e in bottoms:
+        b = bucket_of(e.get("bottom_score", 0))
+        agg[b]["n"] += 1
+        agg[b]["sum"] += e["forward_return_20"]
+        agg[b]["vals"].append(e["forward_return_20"])
+
+    print(f"===== 评分-收益单调性（{source}，bottom_enter={len(bottoms)}，"
+          f"lb={lookback} min_score={min_score}）=====")
+    print(f"| bottom_score箱 | n | forward_return_20 均值 |")
+    print(f"|--------------|---|------------------------|")
+    order = sorted(agg.keys())
+    for b in order:
+        a = agg[b]
+        mean = a["sum"] / a["n"]
+        flag = ""
+        if len(order) >= 2 and mean < agg[max(order)]["sum"] / agg[max(order)]["n"]:
+            # 非最高箱低于最高箱属正常；这里仅提示最高箱
+            pass
+        label = f"{b}+" if b == max(order) else str(b)
+        print(f"| {label} | {a['n']} | {mean*100:+.1f}% |")
+    hi = max(order)
+    lo = min(order)
+    if hi != lo and agg[hi]["n"] >= 3 and agg[lo]["n"] >= 3:
+        d = (agg[hi]["sum"] / agg[hi]["n"] - agg[lo]["sum"] / agg[lo]["n"]) * 100
+        print(f"\n最高箱[{hi}+] − 最低箱[{lo}] 均值差 = {d:+.1f}pp")
+        if d <= 0:
+            print("⚠️ 评分无区分度或反向：score 高的后续收益并不比低的好 → 评分卡可能与未来收益无关")
+        elif d < 5:
+            print("⚠️ 区分度弱：正但 <5pp，不足以支撑打分驱动仓位")
+        else:
+            print("✓ 区分度为正：评分越高后续收益越好（仅样本内，仍需扩样本验证）")
+    else:
+        print("\n⚠️ 箱内样本不足（<3），无法判断单调性")
+
+
 def main():
     args = [a for a in sys.argv[1:] if not a.startswith("--")]
     interactive = "--interactive" in sys.argv
@@ -209,6 +284,10 @@ def main():
     if "--out" in sys.argv:
         out_path = sys.argv[sys.argv.index("--out") + 1]
     symbol = args[0] if args else None
+
+    if "--score-bucket" in sys.argv:
+        score_bucket(symbol)
+        return
 
     from strategy.timing_strategy import TimingStrategy
     from engine.backtest_engine import BacktestEngine

@@ -113,14 +113,14 @@ python3 -m pytest tests/test_timing_signal_snapshot.py -q  # 快照字段 5 用�
 python3 -m pytest tests/test_review_triggers.py -q         # 失败模式预判+冻结标准 14 用例
 python3 -m pytest tests/test_compare_trigger_reviews.py -q # 多标的对照 3 用例
 python3 -m pytest tests/test_trigger_time_distribution.py -q  # 时间分布 4 用例
-python3 -m pytest tests/test_lookback_sensitivity.py -q        # lookback 敏感性 6 用例
+python3 -m pytest tests/test_lookback_sensitivity.py -q        # lookback 敏感性+评分直方 9 用例
 ```
 
 覆盖：engine 中产生交易、指标快照口径、权重影响评分、高价股整手适配、
 触发事件字段完整性、forward_return 事后标注正确性、失败模式预判规则、
 冻结标准命中判定、随机入场基准、多标的横向对照、下跌段占比时间分布、
-lookback 信号稀疏主因诊断。
-全套 144 passed。
+lookback 信号稀疏主因诊断、评分直方（min_score 敏感性）。
+全套 147 passed。
 
 ## 打分触发点可视化（path A，诊断工具）
 
@@ -325,6 +325,66 @@ python3 scripts/compare_trigger_reviews.py 600519 300750 512880 588000
 > 3. **最后扩样本**——按"状态配额 × 时间跨度"填标的（趋势/区间/高波动配比 +
 >    跨 2019 牛 / 2021 结构市 / 2022 熊 / 2024 反弹），用 `batch_multi_trigger_review.py`。
 
+#### 评分区分度修正（lb=30 仍与随机不可区分 → 真问题是评分卡是否有区分度）
+
+> 接上表之后：**茅台 lb=30 命中率 36%，仍与随机基准 37% 不可区分**（N=48，标准误≈±7%，
+> 落在 37% 误差带内）。lb=30 不是"命中率改善"，是从"可能低于随机"变成"与随机不可区分"。
+> 这改变了下一步问题的性质：**不是"lookback 调对了吗"（已答：lb=30 更合理），
+> 而是"评分逻辑本身是否与未来收益无关"。**
+
+`review_triggers.py --score-bucket`（lb=30）回答这问题——按 bottom_score 分箱，算每箱
+`forward_return_20` 均值，看评分与收益是否单调：
+
+| bottom_score 箱 | n | forward_return_20 均值 |
+|----------------|---|------------------------|
+| 4 | 42 | −1.5% |
+| 5 | 2 | −0.1% |
+| 6+ | 4 | +1.0% |
+
+**结论**：
+- **评分几乎无变异性**：42/48 信号压死在 score=4，集中在一个窄带，评分卡对茅台几乎不排序。
+- **区分度弱**：最高箱[6+] 仅比最低箱[4] 高 **+2.4pp**（<5pp），不足以支撑打分驱动仓位。
+- **真问题实锤**：评分卡与未来收益相关性极弱 → 加过滤/调阈值都白搭，**需重建评分卡**，
+  而非继续在现有评分的 min_score/lookback 上做文章。
+
+> ✅ 据此修正前置序第 1 条：`--interactive` 人工复核（判断"位置合理性"）优先级下降——因为
+> 评分无区分度时，过 10 个点也回答不了"评分卡是否有效"。应先做 `--score-bucket`（已做，
+> 评分无区分度）→ 重建评分卡，再看是否需递归 `--interactive`。
+
+#### 稀疏标的评分分布（min_score 敏感性：3→2 全翻倍，但评分无排序力）
+
+`lookback_sensitivity.py --score-hist` 输出稀疏标的的 bottom_score 直方图 + min_score 敏感性：
+
+| 标的 | 评分区间 | min_score 敏感性 |
+|------|---------|-----------------|
+| 300750 宁德 | 全 3 | 2→18 / 3→5 / 4→1 |
+| 512880 券商ETF | 全 3 | 2→20 / 3→4 / 4→2 |
+| 588000 科创50 | 全 3 | 2→11 / 3→3 / 4→1 |
+
+**结论**：
+- **阈值是卡点**：min_score 3→2 三标的全部翻倍（券商 4→20、宁德 5→18、科创 3→11），
+  说明这些标的分能到 2，降一档确实能扩信号。**可降 min_score=2 试扩**。
+- **但评分全部压死在最低触发档 3**（无任何 >3 分值）：信号全靠阈值边缘擦过，**没有排序力**。
+  即便降阈值后命中率看着可以，也无法支撑"打分驱动仓位"——评分不提供方向强度信息。
+- 与茅台同病：**评分卡在底部区间的可分性差**是横跨四标的的系统性问题，非单标的偶发。
+
+> ⚠️ 判定门槛已改双条件（防误判）：lookback 主因须满足 **A) 30 ≥ 2×90** 或
+> **B) 30 > 45 > 60 ≥ 90 且 30 ≥ 10**（单调递减 + 最低信号量），否则 30→4/90→3 噪声
+> 抖动会被误判成递减（有专项测试）。
+
+#### 评分卡问题汇总（本轮跨四标的的系统性发现）
+
+| 标的 | 问题 | 归属 |
+|------|------|------|
+| 茅台 | 评分压死 4，forward_return_20 区分仅 +2.4pp | 评分卡无区分度 → 重建 |
+| 宁德 | 评分全 3，min_score 3→2 翻倍 | 阈值卡点 + 评分无排序力 |
+| 券商ETF | 评分全 3，min_score 3→2 翻倍 | 阈值卡点 + 评分无排序力 |
+| 科创50 | 评分全 3，min_score 3→2 翻倍 | 阈值卡点 + 评分无排序力 |
+
+**统一指向**：评分卡在底部区间给出"暧昧最低分"（全 <=阈值边缘），信号要么全靠阈值擦边、
+要么压死在窄带，**对四只标的分不出"该重仓的好底部"与"碰阈值的次底部"**。下一步优先
+**重建/重配评分卡权重**（让底部评分拉开档位差），而非继续调 min_score/lookback/加过滤。
+
 ## 权重季度自校正（path B，先别动权重）
 
 前置三件事未完成前，**weights_provider 维持现状**，不为自校正编写/启用逻辑：
@@ -359,16 +419,16 @@ python3 scripts/compare_trigger_reviews.py 600519 300750 512880 588000
 | timing/adaptive.py | 当期权重来源 |
 | scripts/timing_strategy_backtest.py | 端到端演示 |
 | scripts/plot_timing_signals.py | 触发点可视化（三层标注 HTML） |
-| scripts/review_triggers.py | 失败模式归类工具（预判+交互+分布表） |
+| scripts/review_triggers.py | 失败模式归类工具（预判+交互+分布表，含 --score-bucket 评分区分度） |
 | scripts/compare_trigger_reviews.py | 多标的命中对照表（含样本量/低样本标灰/随机基准/熊市偏差列） |
 | scripts/trigger_time_distribution.py | bottom_enter 按季度+状态打点（诊断是否集中下跌段） |
-| scripts/lookback_sensitivity.py | lookback 30/45/60/90 敏感性测试（信号稀疏主因诊断） |
+| scripts/lookback_sensitivity.py | lookback 30/45/60/90 敏感性 + --score-hist 评分直方/min_score 敏感性（信号稀疏主因诊断） |
 | data/akshare_source.py | akshare 数据源（含新浪 ETF 回退） |
 | tests/test_timing_signal_snapshot.py | 快照字段完整性 |
 | tests/test_review_triggers.py | 失败模式预判规则引擎 + 冻结标准命中 |
 | tests/test_compare_trigger_reviews.py | 多标的对照表渲染 |
 | tests/test_trigger_time_distribution.py | 时间分布诊断（下跌段占比/季度打点） |
-| tests/test_lookback_sensitivity.py | lookback 敏感性（稀疏主因判定门槛） |
+| tests/test_lookback_sensitivity.py | lookback 敏感性（稀疏主因判定门槛）+ 评分直方 |
 
 后续（按优先级）：
 - ✅ 打分触发点接入可视化记录层（图上标注底/顶，path A）

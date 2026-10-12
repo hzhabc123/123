@@ -30,7 +30,6 @@ def test_decreasing_diag():
                       {"lookback": 90, "n_bottom": 1, "n_top": 1, "n_total": 2,
                        "n_hit": 0, "n_dir": 1, "rate": 0.0, "sparse": True, "atr": 0.5}],
              "diag": ""}]
-    # 手动调 analyze 的判定肉签
     reps[0]["diag"] = ("信号稀疏主要来自 lookback：lookback 越大信号越稀（30→多、90→少），"
                        "扩样本前先定 lookback（如取信号量适中且命中率不塌的值）")
     md = render_md(reps)
@@ -55,25 +54,42 @@ def test_noise_jitter_not_decreasing():
 
 
 def test_true_decreasing():
-    """30->48/90->12 真实递减（30>=10 且 >=2×90）→ 判 lookback 主因"""
+    """30->48/90->12 真实递减（30>=10 且 >=2×90）→ 判 lookback 主因（条件 A）"""
     from scripts.lookback_sensitivity import classify
     rows = [{"n_bottom": 48}, {"n_bottom": 28}, {"n_bottom": 10}, {"n_bottom": 12}]
     assert "lookback 越大信号越稀" in classify(rows)
     assert "先定 lookback" in classify(rows)
 
 
-def test_render_md_has_columns():
-    """render_md：含表头、判定口径、稀疏标记"""
-    reps = [{"symbol": "C",
-             "rows": [{"lookback": 30, "n_bottom": 5, "n_top": 2, "n_total": 7,
-                       "n_hit": 2, "n_dir": 5, "rate": 0.4, "sparse": True, "atr": 0.5},
-                      {"lookback": 90, "n_bottom": 3, "n_top": 1, "n_total": 4,
-                       "n_hit": 1, "n_dir": 3, "rate": 0.33, "sparse": True, "atr": 0.5}],
-             "diag": "lookback 相关性弱"}]
-    md = render_md(reps)
-    assert "lookback" in md
-    assert "稀疏" in md
+def test_monotonic_decreasing_below_2x():
+    """15/12/9/8：未达 2×90（15<16）但单调递减且 30>=10 → 判 lookback 主因（条件 B）"""
+    from scripts.lookback_sensitivity import classify
+    rows = [{"n_bottom": 15}, {"n_bottom": 12}, {"n_bottom": 9}, {"n_bottom": 8}]
+    assert "lookback 越大信号越稀" in classify(rows)
+    assert "先定 lookback" in classify(rows)
+
+
+def test_score_hist_returns_fields():
+    """score_hist：返回结构完整（hist/dict + ms_scan）"""
+    import scripts.lookback_sensitivity as lbs
+    lbs.load_bars = _synth_load
+    h = lbs.score_hist("SYN", lookback=60)
+    for k in ("symbol", "lookback", "min_score", "n_bottom", "hist", "ms_scan"):
+        assert k in h, k
+    assert isinstance(h["hist"], dict) or h["hist"] == {}
+
+
+def test_render_score_hist_has_buckets():
+    """render_score_hist：含 min_score 敏感性与判定口径"""
+    from scripts.lookback_sensitivity import render_score_hist
+    reps = [{"symbol": "X", "lookback": 30, "min_score": 3, "n_bottom": 6,
+             "hist": {3.0: 2, 4.0: 3, 5.0: 1}, "score_range": (3.0, 5.0),
+             "ms_scan": {2: 8, 3: 3, 4: 1}}]
+    md = render_score_hist(reps)
+    assert "评分直方图" in md
     assert "判定口径" in md
+    assert "min_score 敏感性" in md
+    assert "bottom_score" in md
 
 
 def _synth_load(symbol=None):
