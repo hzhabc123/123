@@ -117,6 +117,7 @@ python3 -m pytest tests/test_lookback_sensitivity.py -q        # lookback 敏感
 python3 -m pytest tests/test_factor_discrimination.py -q       # 单因子区分度+共线性+字段 5 用例
 python3 -m pytest tests/test_momentum_significance.py -q       # 动量显著性+bootstrap+状态分层 5 用例
 python3 -m pytest tests/test_pure_momentum_backtest.py -q      # 纯动量基线 vs 评分卡 5 用例
+python3 -m pytest tests/test_momentum_baseline_check.py -q     # 纯动量基线显著性核查(SD/SEM/t+无条件基准+触发定义) 5 用例
 ```
 
 覆盖：engine 中产生交易、指标快照口径、权重影响评分、高价股整手适配、
@@ -124,8 +125,8 @@ python3 -m pytest tests/test_pure_momentum_backtest.py -q      # 纯动量基线
 冻结标准命中判定、随机入场基准、多标的横向对照、下跌段占比时间分布、
 lookback 信号稀疏主因诊断、评分直方（min_score 敏感性）、单因子区分度
 与共线性矩阵、bottom_cats 字段契约、动量显著性 bootstrap、状态分层差异、
-纯动量基线对照。
-全套 162 passed。
+纯动量基线对照、纯动量基线显著性核查。
+全套 165 passed。
 
 ## 打分触发点可视化（path A，诊断工具）
 
@@ -480,6 +481,34 @@ P(差>0)、并按 market_state 状态分层（趋势/区间）重算差异：
 > 用户既定顺序：到达纯动量基线（已得到）→ 扩样本到位后测新因子增量（纯动量+下跌斜率/量能/
 > 背离 vs 纯动量）→ 增量显著才进评分卡。重建是最后一步，不是第一步。
 
+#### 纯动量基线显著性核查（补 SD/SEM/t + 无条件基准 + 触发定义，momentum_baseline_check）
+
+> 上一节 "+2.03% 实锤" 缺三个对照，用户指正后补验：`scripts/momentum_baseline_check.py`
+> 回答" +2.03% 是否显著可信 "。这是三步顺序的第 1 步（扩样本前的显著性确认）。
+
+**茅台（lb=30）核查结果：**
+
+| 核查项 | 结果 | 判定 |
+|--------|------|------|
+| [1] 纯动量 n=31 均值离散度 | mean=+2.03%, SD=7.02%, SEM=1.26%, **t=1.61** | **不显著**（t<2） |
+| [1] bootstrap 95%CI (mean vs 0) | [-0.34, +4.65]，P=0.95 | **CI 含 0 → 不显著** |
+| [2] 同期全样本无条件基准 | 区间 mean=-0.24%, n=390 | 纯动量基底优于全样本 |
+| [2] 纯动量 − 无条件基准 | **+2.27pp**，bootstrap CI=[-0.05, +4.99]，P=0.97 | **CI 含 0 → 选择偏差未排除** |
+| [3] 触发定义澄清 | 纯动量=min_score=1 新阈值信号集（A），非 48 内动量真子集（B） | A(n=31,+2.03%) vs B(n=10,+1.42%) 差 +0.61pp |
+
+**结论（修正上一节）**：
+- **+2.03% 不显著**：t=1.61 < 2，mean-vs-0 的 CI 含 0。上一节"纯动量减信号提质 +3.3pp"的结论
+  **收缩为"方向为正、但统计上未站稳"**。
+- **选择偏差未排除**：纯动量相对同期无条件基准 +2.27pp，但差异 CI=[-0.05,+4.99] 仍含 0，
+  P=0.97 贴近门槛。不能断言"是真赢"。
+- **触发定义已澄清**：31 vs 48 属 A（min_score 3→1 新阈值），非 B 真子集；A 与 B 差 +0.61pp，
+  +2.03% 的相对优势**部分来自降低总阈值**放量入池，不全是动量信息增量。
+
+> ⚠️ **对后续步骤的影响**：因 [1] 不显著，第 2 步纯动量真实回测**仍需做**（作为对照证据），
+> 但预期回测层叠加信号频率/持仓重叠/成本后难以凭空转正；第 3 步扩样本（同时跑纯动量+无条件
+> 基准对照，同一把尺）才是真正的最终验证。**保留极简评分结构**（动量为主高权重 + 1–2 个独立
+> 维度因子低权重，不纯单因子），为扩样本后微调留退化空间。
+
 #### 评分卡问题汇总（本轮跨四标的的系统性发现）
 
 | 标的 | 问题 | 归属 |
@@ -537,6 +566,7 @@ P(差>0)、并按 market_state 状态分层（趋势/区间）重算差异：
 | scripts/factor_discrimination.py | 单因子区分度检验（满足 vs 不满足的 fwd20 均值差 + 共线性矩阵，重建前置诊断） |
 | scripts/momentum_significance.py | 动量显著性（组内 n + bootstrap 2000 次 95%CI + P 值 + 状态分层差异） |
 | scripts/pure_momentum_backtest.py | 纯动量基线 vs 现有评分卡回测对照（只保留动量类别信号） |
+| scripts/momentum_baseline_check.py | 纯动量基线显著性核查（SD/SEM/t + 同期无条件基准 + 触发定义澄清） |
 | data/akshare_source.py | akshare 数据源（含新浪 ETF 回退） |
 | tests/test_timing_signal_snapshot.py | 快照字段完整性 |
 | tests/test_review_triggers.py | 失败模式预判规则引擎 + 冻结标准命中 |
@@ -546,6 +576,7 @@ P(差>0)、并按 market_state 状态分层（趋势/区间）重算差异：
 | tests/test_factor_discrimination.py | 单因子区分度 + 共线性矩阵 + bottom_cats 字段契约 |
 | tests/test_momentum_significance.py | 动量 bootstrap 显著性 + 状态分层差异 |
 | tests/test_pure_momentum_backtest.py | 纯动量基线 vs 现有评分卡对照 |
+| tests/test_momentum_baseline_check.py | 纯动量基线显著性核查（SD/SEM/t + 无条件基准 + 触发定义） |
 
 后续（按优先级）：
 - ✅ 打分触发点接入可视化记录层（图上标注底/顶，path A）
