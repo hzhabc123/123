@@ -1,0 +1,42 @@
+{
+  "symbol": "600519",
+  "lookback": 30,
+  "source": "真实行情 600519",
+  "rows": [
+    {
+      "label": "纯动量(A型, min_score=1)",
+      "total_return": 0.02158303940000028,
+      "max_drawdown": 0.03835793748227964,
+      "trades": 34,
+      "win_rate": 0.47058823529411764,
+      "plr": 1.808636261006999
+    },
+    {
+      "label": "原评分卡(min_score=3)",
+      "total_return": 0.027708615799999947,
+      "max_drawdown": 0.08727811482961273,
+      "trades": 5,
+      "win_rate": 1.0,
+      "plr": 0.0
+    },
+    {
+      "label": "买入持有茅台",
+      "total_return": -0.0620569808387067,
+      "max_drawdown": 0.313666236357235,
+      "trades": 1,
+      "win_rate": 0.0,
+      "plr": 0.0
+    },
+    {
+      "label": "无条件做多(同频随机, seed=42)",
+      "total_return": -0.00486724952027253,
+      "max_drawdown": 0.0,
+      "trades": 34,
+      "win_rate": 0.4117647058823529,
+      "plr": 1.0879408512332303
+    }
+  ],
+  "pure_trades": 34,
+  "scorecard_trades": 5,
+  "unconditional_long_n": 34
+}
