@@ -47,6 +47,39 @@ def test_unconditional_long_bounds():
     assert r["trades"] == 0 and r["n"] == 0
 
 
+def test_exposure_flat_and_full():
+    """_exposure 从 equity_curve 算平均持仓比例 + 空仓天数占比"""
+    from scripts.closure_backtest import _exposure
+
+    class _Pt:
+        def __init__(self, equity, mv):
+            self.equity = equity
+            self.market_value = mv
+
+    class _Eng:
+        def get_equity_curve(self):
+            # 4 bar：前2满仓(100% 持仓)、后2空仓(0%)
+            return [{"equity": 100, "market_value": 100},
+                    {"equity": 110, "market_value": 110},
+                    {"equity": 105, "market_value": 0},
+                    {"equity": 100, "market_value": 0}]
+
+    e = _exposure(_Eng())
+    assert abs(e["avg_exposure"] - 0.5) < 1e-9      # 2/4 满仓
+    assert abs(e["flat_days"] - 0.5) < 1e-9         # 2/4 空仓
+
+
+def test_exposure_empty():
+    from scripts.closure_backtest import _exposure
+
+    class _Eng:
+        def get_equity_curve(self):
+            return []
+
+    e = _exposure(_Eng())
+    assert e["avg_exposure"] == 0.0 and e["flat_days"] == 0.0
+
+
 def test_closure_synthetic_roundtrip(tmp_path):
     """合成数据整段回测可运行并写出 JSON，含四行 + 核心字段"""
     from scripts.closure_backtest import closure_backtest
@@ -55,9 +88,12 @@ def test_closure_synthetic_roundtrip(tmp_path):
     with open(out_path, "r", encoding="utf-8") as fh:
         data = json.load(fh)
     assert len(data["rows"]) == 4
-    for key in ("total_return", "max_drawdown", "trades", "win_rate", "plr"):
+    for key in ("total_return", "max_drawdown", "trades", "win_rate", "plr",
+                "avg_exposure", "flat_days"):
         assert key in data["rows"][0], key
-    # 第三行应为买入持有（trades=1）
+    # 第三行应为买入持有（trades=1，100% 持仓）
     assert data["rows"][2]["label"] == "买入持有茅台"
     assert data["rows"][2]["trades"] == 1
+    assert data["rows"][2]["avg_exposure"] == 1.0
+    assert data["rows"][2]["flat_days"] == 0.0
     assert "pure_trades" in data and "scorecard_trades" in data

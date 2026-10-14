@@ -9,7 +9,9 @@
       "max_drawdown": 0.03835793748227964,
       "trades": 34,
       "win_rate": 0.47058823529411764,
-      "plr": 1.808636261006999
+      "plr": 1.808636261006999,
+      "avg_exposure": 0.03647088268585379,
+      "flat_days": 0.8677685950413223
     },
     {
       "label": "原评分卡(min_score=3)",
@@ -17,7 +19,9 @@
       "max_drawdown": 0.08727811482961273,
       "trades": 5,
       "win_rate": 1.0,
-      "plr": 0.0
+      "plr": 0.0,
+      "avg_exposure": 0.17971335476436825,
+      "flat_days": 0.378099173553719
     },
     {
       "label": "买入持有茅台",
@@ -25,7 +29,9 @@
       "max_drawdown": 0.313666236357235,
       "trades": 1,
       "win_rate": 0.0,
-      "plr": 0.0
+      "plr": 0.0,
+      "avg_exposure": 1.0,
+      "flat_days": 0.0
     },
     {
       "label": "无条件做多(同频随机, seed=42)",
@@ -33,7 +39,9 @@
       "max_drawdown": 0.0,
       "trades": 34,
       "win_rate": 0.4117647058823529,
-      "plr": 1.0879408512332303
+      "plr": 1.0879408512332303,
+      "avg_exposure": 1.0,
+      "flat_days": 0.0
     }
   ],
   "pure_trades": 34,
