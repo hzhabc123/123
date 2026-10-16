@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-扩样本：策略 / 随机空仓 / 固定低仓位 三列对照（batch_expand_sample）
+扩样本：策略 / 随机空仓 / 固定低仓位 三列对照（batch_expand_sample v2）
 
 背景：封顶测试确认纯动量 +2.16% 可被空仓 beta 解释（86.8% 空仓），但原评分卡 +2.77% 不能
 （62.2% 时间持仓）；两者都无统计显著 alpha，但原因不同。要回答"框架是普遍无效，还是普遍只有
@@ -9,18 +9,23 @@
   1. 随机空仓对照  : 同样平均空仓比例，但空仓时点随机 → 检验择时时机
   2. 固定低仓位对照: 始终按该策略的平均持仓比例持仓、不择时 → 检验"低仓位 vs 动态仓位"
 
-判断逻辑：
-  · 策略 > 随机空仓   → 择时时机有效
+判断逻辑（用户裁定 v2）：
+  · 策略 > 随机空仓均值(1000次抽样) → 择时时机有效
   · 策略 > 固定低仓位 → 动态择时优于静态低仓位
   · 策略 ≈ 固定低仓位 → 正超额就是低仓位 beta，不是择时
 
-输出表头：标的、时段、市场状态、策略收益、随机空仓收益、固定低仓位收益、
-超额(vs随机)、超额(vs固定)。
+v2 修正：随机空仓从**单次抽样改为 1000 次抽样分布**（均值/中位数/5-95% 区间）。单次抽样方差
+大到不能当对照（512880 单次抽到 +25.49% 是运气不是规律），"3/4 跑赢"是空心计数。均值才是与
+固定低仓位（同 exposure 无随机性稳定基准）可比的对照。同时补 **vs 买入持有列** 与
+**净超额(vs固定低仓位)合计**。
+
+输出表头：标的、时段、市场状态、策略收益、随机空仓均值[5-95%]、固定低仓位收益、买入持有、
+超额(vs随机)、超额(vs固定)、超额(vs买入持有)。
 
 用法:
     python3 scripts/batch_expand_sample.py 600519 300750 512880 588000
-    python3 scripts/batch_expand_sample.py --symbols 600519,300750 --start 2023-01-01 --end 2025-01-01
-    python3 scripts/batch_expand_sample.py 600519 --out outputs/expand_600519.json
+    python3 scripts/batch_expand_sample.py --symbols 600519,300750
+    python3 scripts/batch_expand_sample.py 600519 --mode momentum --out outputs/expand_600519.json
 """
 import sys, os, json, random, math
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -82,22 +87,37 @@ def _hold_return(closes, hold_ratio):
 
 
 def _random_flat_return(closes, flat_ratio, seed=42):
-    """随机空仓对照：平均空仓比例 = flat_ratio，但空仓/持仓时点随机。
-    区分于固定低仓位：这里是二值化 —— 随机挑选一部分交易日全仓、其余空仓，
-    使全仓日占比 ≈ exposure = 1 - flat_ratio；收益 = 选中全仓日的逐日收益累加。
-    反映"同样低参与度、但时点靠运气"的结果；用 seed 固定可复现。"""
+    """随机空仓对照（单次抽样）：平均空仓比例 = flat_ratio，但空仓/持仓时点随机。
+    二值化 —— 随机挑选一部分交易日全仓、其余空仓，使全仓日占比 ≈ exposure=1-flat_ratio；
+    收益 = 选中全仓日的复利累加。⚠️ 单次抽样方差大，只作内部单位测试用；
+    实际对照须用 _random_flat_dist（多抽样分布），勿用本函数下结论。"""
+    dist = _random_flat_dist(closes, flat_ratio, n_samples=1, seed=seed)
+    return dist["mean"]
+
+
+def _random_flat_dist(closes, flat_ratio, n_samples=1000, seed=42):
+    """随机空仓对照（多抽样分布）：对同一 exposure 随机时点抽样 n_samples 次，
+    返回 均值/中位数/5%-95% 区间。均值才是与固定低仓位（同 exposure 无随机性）可比的
+    稳定基准；单次抽样会把时点运气误读成策略优势。"""
     if len(closes) < 2:
-        return 0.0
+        return {"mean": 0.0, "median": 0.0, "lo": 0.0, "hi": 0.0}
     daily = [closes[i + 1] / closes[i] - 1.0 for i in range(len(closes) - 1)]
     hold_ratio = 1.0 - flat_ratio
     n_hold = int(round(hold_ratio * len(daily)))
     rng = random.Random(seed)
-    hold_days = set(rng.sample(range(len(daily)), n_hold))
-    # 选中日的复利收益，与 buy&hold 口径一致（全仓时 == 买入持有）
-    ret = 1.0
-    for i in hold_days:
-        ret *= 1.0 + daily[i]
-    return ret - 1.0
+    rets = []
+    for _ in range(n_samples):
+        hold_days = rng.sample(range(len(daily)), n_hold)
+        ret = 1.0
+        for i in hold_days:
+            ret *= 1.0 + daily[i]
+        rets.append(ret - 1.0)
+    rets.sort()
+    lo = rets[int(0.05 * n_samples)]
+    hi = rets[int(0.95 * n_samples) - 1]
+    mean = sum(rets) / len(rets)
+    median = rets[n_samples // 2]
+    return {"mean": mean, "median": median, "lo": lo, "hi": hi}
 
 
 def _buy_hold_return(closes):
@@ -129,7 +149,8 @@ def expand_one(symbol, min_score, weights, lookback=30):
     flat_ratio = 1.0 - exposure               # 平均空仓比例
 
     hold_ret = _hold_return(closes, exposure)               # 固定低仓位
-    rand_ret = _random_flat_return(closes, flat_ratio)      # 随机空仓
+    rand_dist = _random_flat_dist(closes, flat_ratio)       # 随机空仓 1000 次分布
+    rand_mean = rand_dist["mean"]
     bh_ret = _buy_hold_return(closes)                       # 买入持有
     period = f"{bars[0].datetime:%Y-%m-%d}~{bars[-1].datetime:%Y-%m-%d}"
     mkt = classify_market_state(bh_ret)
@@ -140,12 +161,16 @@ def expand_one(symbol, min_score, weights, lookback=30):
         "trades": len(trades), "win_rate": m.win_rate,
         "avg_exposure": exposure, "flat_ratio": flat_ratio,
         "strat_return": strat_ret, "hold_low_return": hold_ret,
-        "rand_flat_return": rand_ret, "buy_hold_return": bh_ret,
-        "excess_vs_rand": strat_ret - rand_ret,
+        "rand_flat_result": rand_dist, "buy_hold_return": bh_ret,
+        "rand_flat_return": rand_mean,          # 兼容键：随机空仓均值，勿再当单次
+        "excess_vs_rand": strat_ret - rand_mean,
         "excess_vs_holdlow": strat_ret - hold_ret,
-        "verdict_rand": "择时时机有效" if strat_ret > rand_ret else "≤随机空仓",
+        "excess_vs_buyhold": strat_ret - bh_ret,
+        "verdict_rand": "择时时机有效" if strat_ret > rand_mean else "≤随机空仓均值",
         "verdict_holdlow": ("动态择时>静态" if strat_ret > hold_ret
                             else "≈低仓位beta(非择时)"),
+        "verdict_buyhold": ("vs买入持有胜" if strat_ret > bh_ret
+                            else "vs买入持有输(上涨踏空/下跌避跌)"),
     }
 
 
@@ -160,9 +185,11 @@ def batch_expand(symbols, min_score=3, mode="both", lookback=30, out_path=None):
             print(f"  {sym}: 失败 {e}")
             continue
         rows.append(r)
+        rd = r["rand_flat_result"]
         print(f"| {r['symbol']} | {r['period']} | {r['market_state']} | {r['trades']:3d} | "
-              f"{r['strat_return']*100:+6.2f}% | {r['rand_flat_return']*100:+6.2f}% | "
-              f"{r['hold_low_return']*100:+6.2f}% | "
+              f"{r['strat_return']*100:+6.2f}% | "
+              f"随机均{rd['mean']*100:+6.2f}%[5-95: {rd['lo']*100:+.1f}~{rd['hi']*100:+.1f}] | "
+              f"{r['hold_low_return']*100:+6.2f}% | {r['buy_hold_return']*100:+6.2f}% | "
               f"{r['excess_vs_rand']*100:+6.2f}pp | {r['excess_vs_holdlow']*100:+6.2f}pp | "
               f"{r['verdict_rand']} / {r['verdict_holdlow']} |")
 
@@ -170,11 +197,15 @@ def batch_expand(symbols, min_score=3, mode="both", lookback=30, out_path=None):
     if rows:
         rand_ok = sum(1 for r in rows if r["strat_return"] > r["rand_flat_return"])
         hold_ok = sum(1 for r in rows if r["strat_return"] > r["hold_low_return"])
+        bh_ok = sum(1 for r in rows if r["strat_return"] > r["buy_hold_return"])
+        net_exc = sum(r["excess_vs_holdlow"] for r in rows)
         print(f"  {len(rows)} 标的中：\n"
-              f"    跑赢随机空仓 {rand_ok} 个 → 择时时机有信号的标的数\n"
+              f"    跑赢随机空仓均值 {rand_ok} 个 → 择时时机有信号的标的数(1000次抽样)\n"
               f"    跑赢固定低仓位 {hold_ok} 个 → 动态择时优于静态低仓位的标的数\n"
-              f"  （若多数 ≈ 固定低仓位 → 正超额=低仓位beta非择时；"
-              f"若跑赢固定 → 动态择时可能有效，但需显著性复核）")
+              f"    vs买入持有 {bh_ok} 个 → 真跑赢持有(免于上涨踏空)的标的数\n"
+              f"    净超额(vs固定低仓位)合计 {net_exc*100:+.2f}pp\n"
+              f"  （负净超额 → 扣仓位后无 alpha，纯空仓 beta；"
+              f"正净超额才须复核显著性）")
 
     if out_path:
         with open(out_path, "w", encoding="utf-8") as fh:

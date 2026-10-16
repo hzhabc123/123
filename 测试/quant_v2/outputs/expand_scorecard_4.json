@@ -14,12 +14,20 @@
       "flat_ratio": 0.8202866452356318,
       "strat_return": 0.027708615799999947,
       "hold_low_return": -0.0111524682130721,
-      "rand_flat_return": 0.07291880637234538,
+      "rand_flat_result": {
+        "mean": -0.0004898696025894674,
+        "median": -0.00514775437079371,
+        "lo": -0.1867375636593295,
+        "hi": 0.2168052927431864
+      },
       "buy_hold_return": -0.0620569808387067,
-      "excess_vs_rand": -0.04521019057234543,
+      "rand_flat_return": -0.0004898696025894674,
+      "excess_vs_rand": 0.028198485402589416,
       "excess_vs_holdlow": 0.03886108401307205,
-      "verdict_rand": "≤随机空仓",
-      "verdict_holdlow": "动态择时>静态"
+      "excess_vs_buyhold": 0.08976559663870673,
+      "verdict_rand": "择时时机有效",
+      "verdict_holdlow": "动态择时>静态",
+      "verdict_buyhold": "vs买入持有胜"
     },
     {
       "symbol": "300750",
@@ -33,12 +41,20 @@
       "flat_ratio": 0.8165079814434733,
       "strat_return": -0.03884108719999979,
       "hold_low_return": 0.04903507988398693,
-      "rand_flat_return": 0.20065260779688332,
+      "rand_flat_result": {
+        "mean": 0.07091771326676783,
+        "median": 0.07633730789362801,
+        "lo": -0.25704032433984323,
+        "hi": 0.4903866297328598
+      },
       "buy_hold_return": 0.26723276723276723,
-      "excess_vs_rand": -0.2394936949968831,
+      "rand_flat_return": 0.07091771326676783,
+      "excess_vs_rand": -0.10975880046676764,
       "excess_vs_holdlow": -0.08787616708398671,
-      "verdict_rand": "≤随机空仓",
-      "verdict_holdlow": "≈低仓位beta(非择时)"
+      "excess_vs_buyhold": -0.30607385443276704,
+      "verdict_rand": "≤随机空仓均值",
+      "verdict_holdlow": "≈低仓位beta(非择时)",
+      "verdict_buyhold": "vs买入持有输(上涨踏空/下跌避跌)"
     },
     {
       "symbol": "512880",
@@ -52,12 +68,20 @@
       "flat_ratio": 0.7816758964318433,
       "strat_return": -5.934620000003221e-05,
       "hold_low_return": 0.07732312001372214,
-      "rand_flat_return": 0.2548503984920576,
+      "rand_flat_result": {
+        "mean": 0.07882940879815438,
+        "median": 0.08172239599598288,
+        "lo": -0.1806880084394602,
+        "hi": 0.41608174816929206
+      },
       "buy_hold_return": 0.3541666666666665,
-      "excess_vs_rand": -0.2549097446920576,
+      "rand_flat_return": 0.07882940879815438,
+      "excess_vs_rand": -0.07888874275745444,
       "excess_vs_holdlow": -0.07738246621372218,
-      "verdict_rand": "≤随机空仓",
-      "verdict_holdlow": "≈低仓位beta(非择时)"
+      "excess_vs_buyhold": -0.3542259224460885,
+      "verdict_rand": "≤随机空仓均值",
+      "verdict_holdlow": "≈低仓位beta(非择时)",
+      "verdict_buyhold": "vs买入持有输(上涨踏空/下跌避跌)"
     },
     {
       "symbol": "588000",
@@ -71,12 +95,20 @@
       "flat_ratio": 0.8006581253764976,
       "strat_return": -0.06032073579999986,
       "hold_low_return": 0.004286922034914025,
-      "rand_flat_return": 0.018956809757893156,
+      "rand_flat_result": {
+        "mean": 0.012886995989629137,
+        "median": 0.015432234298280497,
+        "lo": -0.2508617407797277,
+        "hi": 0.32939193821058027
+      },
       "buy_hold_return": 0.021505376344086002,
-      "excess_vs_rand": -0.07927754555789301,
+      "rand_flat_return": 0.012886995989629137,
+      "excess_vs_rand": -0.07320773178962908,
       "excess_vs_holdlow": -0.06460765783491389,
-      "verdict_rand": "≤随机空仓",
-      "verdict_holdlow": "≈低仓位beta(非择时)"
+      "excess_vs_buyhold": -0.08182611214388584,
+      "verdict_rand": "≤随机空仓均值",
+      "verdict_holdlow": "≈低仓位beta(非择时)",
+      "verdict_buyhold": "vs买入持有输(上涨踏空/下跌避跌)"
     }
   ]
 }

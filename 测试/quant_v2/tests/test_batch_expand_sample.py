@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""扩样本三列对照 batch_expand_sample 的单元测试。"""
+"""扩样本三列对照 batch_expand_sample 的单元测试（v2：随机空仓分布式）。"""
 import sys, os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from scripts.batch_expand_sample import (
-    _hold_return, _random_flat_return, _buy_hold_return,
+    _hold_return, _random_flat_return, _random_flat_dist, _buy_hold_return,
     classify_market_state,
 )
 
@@ -14,6 +14,11 @@ def _series(gains):
     for g in gains:
         c.append(c[-1] * (1 + g))
     return c
+
+
+def _varying_series(n=40):
+    """交替 +2%/-1% 的变化序列（真实行情风格，避免等幅导致无方差）"""
+    return _series([0.02 if i % 2 == 0 else -0.01 for i in range(n)])
 
 
 def test_buy_hold_return():
@@ -62,6 +67,45 @@ def test_random_flat_bounds():
 
 def test_random_flat_short_guard():
     assert _random_flat_return([100.0], 0.5, seed=42) == 0.0
+
+
+def test_random_flat_dist_mean_close_to_hold():
+    # 多抽样均值应落在固定低仓位(同 exposure 无随机性的稳定基准)附近；
+    # 单次抽样方差大不可用(用户裁定)。等幅序列会使每天收益相同→无方差，
+    # 用变化序列(交替+2%/-1%)才能反映真实行情。
+    up = _varying_series()
+    hold = _hold_return(up, 0.5)
+    dist = _random_flat_dist(up, 0.5, n_samples=2000)
+    assert abs(dist["mean"] - hold) < 0.02
+    assert dist["median"] <= dist["hi"] and dist["lo"] <= dist["median"]
+
+
+def test_random_flat_dist_has_spread():
+    # 单次抽样方差必须被量化为区间宽度；无宽度说明退化为固定比例(同固定低仓位)。
+    up = _varying_series()
+    dist = _random_flat_dist(up, 0.5, n_samples=2000)
+    assert dist["hi"] - dist["lo"] > 0.01
+
+
+def test_random_flat_dist_has_wider_spread_than_single():
+    # 单次抽样 vs 分布：单次落在分布内，且分布均值远稳定于单次
+    up = _varying_series()
+    hold = _hold_return(up, 0.5)
+    dist = _random_flat_dist(up, 0.5, n_samples=2000)
+    single = _random_flat_dist(up, 0.5, n_samples=1)["mean"]
+    assert dist["lo"] <= single <= dist["hi"]
+    assert abs(dist["mean"] - hold) <= abs(single - hold) + 1e-9
+
+
+def test_random_flat_dist_reproducible():
+    up = _varying_series()
+    assert _random_flat_dist(up, 0.5, n_samples=100, seed=7) == \
+        _random_flat_dist(up, 0.5, n_samples=100, seed=7)
+
+
+def test_random_flat_dist_short_guard():
+    empty = _random_flat_dist([100.0], 0.5)
+    assert empty["mean"] == 0.0 and empty["median"] == 0.0
 
 
 def test_classify_market_state():
