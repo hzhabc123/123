@@ -1,6 +1,6 @@
 ---
 title: 择时策略接入回测引擎（TimingStrategy）
-version: "1.3"
+version: "1.4"
 domain: 量化回测 / 择时 / 策略 / 引擎集成 / 可视化
 tags: [quant, timing, strategy, engine, backtest, visualization]
 aliases:
