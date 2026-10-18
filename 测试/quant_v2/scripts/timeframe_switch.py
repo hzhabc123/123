@@ -26,8 +26,8 @@ from datetime import datetime, date
 
 # 复用 batch_expand_sample 的对照结构（不新建框架）
 from scripts.batch_expand_sample import (
-    _run_engine, _avg_exposure,
-    _hold_return, _random_flat_dist, _buy_hold_return, classify_market_state,
+    _avg_exposure, _hold_return, _random_flat_dist, _buy_hold_return,
+    classify_market_state,
 )
 from scripts.pure_momentum_backtest import _weights
 
@@ -35,6 +35,38 @@ DEFAULT_START = date(2019, 1, 1)
 DEFAULT_END   = date(2025, 1, 1)
 DEFAULT_ADJUST = "hfq"   # 后复权（跨 6 年前复权会漂移）
 DEFAULT_MIN_SIGNALS = 50  # 周线硬门槛：总信号数 ≥ 此值才做统计推断
+
+
+def _run_engine_hfq(bars, min_score, weights, lookback=30):
+    """跑 TimingStrategy，账户规模与风控适配 hfq 高价股。
+    背景：hfq 后复权把价格放大到 7928–19782 元（如茅台）。若用现实小资金(50万)，
+    风控按权益比例(上限40%)拦截会把 158–331% 单笔比例的建仓全部拒掉 → 高价标的全空仓、
+    净超额恒 0（伪结论）。本函数把初始资金放大到 2000 万（覆盖茅台 1 手~200万 × 30% 仓位）、
+    单笔金额上限放大到 1000 万、单笔比例上限 0.4，保证"信号→仓位→净超额"不被资金尺度
+    天花板扭曲；收益率口径与资金规模无关（同比例仓位收益一致）。
+    返回与 batch_expand._run_engine 相同的 (summary, metrics, trades, engine)。"""
+    from strategy.timing_strategy import TimingStrategy
+    from engine.backtest_engine import BacktestEngine
+    from portfolio.portfolio import Portfolio
+    from risk.risk_manager import RiskManager, RiskConfig
+    from risk.position_sizer import PercentSizer
+    from performance.analyzer import PerformanceAnalyzer
+
+    strat = TimingStrategy(min_score=min_score, direction_mode="both",
+                           lookback=lookback,
+                           weights=(weights or {}) if weights is not None else None)
+    portfolio = Portfolio(initial_cash=20_000_000.0)   # 与 hfq 价格尺度匹配
+    rc = RiskConfig()
+    rc.max_single_trade_amount = 10_000_000.0   # 覆盖 hfq 高价单笔
+    rc.max_single_trade_ratio = 0.4
+    rc.max_position_ratio = 0.8
+    engine = BacktestEngine(strategy=strat, portfolio=portfolio,
+                            risk_manager=RiskManager(rc),
+                            position_sizer=PercentSizer(percent=0.3, min_amount=1000.0),
+                            symbol=strat.name, lookback=500)
+    summary = engine.run(bars)
+    m = PerformanceAnalyzer(engine.get_equity_curve(), portfolio.trades).compute()
+    return summary, m, portfolio.trades, engine
 
 
 def _load_range(symbol, start=DEFAULT_START, end=DEFAULT_END, adjust=DEFAULT_ADJUST):
@@ -82,7 +114,7 @@ def aggregate_weekly(daily_bars):
 def run_timeframe(bars, min_score, weights, lookback=30, label=""):
     """在一套指定周期 bars 上跑 策略+两对照，返回行记录。"""
     closes = [b.close for b in bars]
-    _, m, trades, engine = _run_engine(bars, min_score, weights, lookback)
+    _, m, trades, engine = _run_engine_hfq(bars, min_score, weights, lookback)
     strat_ret = m.total_return
     exposure = _avg_exposure(engine)
     flat_ratio = 1.0 - exposure
@@ -208,12 +240,12 @@ def run_symbol(sym, mode, lookback, start, end, adjust, yearly):
     # 日线全量
     eff_weights = _weights(keep_momentum=True) if mode == "momentum" else None
     _ms = 1 if mode == "momentum" else 3
-    d_row, _, _, d_eng = _run_engine(daily, _ms, eff_weights, lookback)
+    d_row, _, _, d_eng = _run_engine_hfq(daily, _ms, eff_weights, lookback)
     d = run_timeframe(daily, _ms, eff_weights, lookback, label="日线")
     res["daily"] = d
     # 周线：只跑纯动量（全量聚合，保留跨年上下文）
     weekly = aggregate_weekly(daily)
-    w_row, _, _, w_eng = _run_engine(weekly, 1, _weights(keep_momentum=True), lookback)
+    w_row, _, _, w_eng = _run_engine_hfq(weekly, 1, _weights(keep_momentum=True), lookback)
     w = run_timeframe(weekly, 1, _weights(keep_momentum=True), lookback, label="周线")
     res["weekly"] = w
     res["weekly_bottom_signals"] = w["bottom_signals"]
