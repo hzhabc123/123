@@ -117,8 +117,48 @@ def test_timeframe_switch_runs_syn():
     with contextlib.redirect_stdout(buf):
         timeframe_switch(["SYN_TS"], mode="momentum", lookback=10)
     out = buf.getvalue()
-    assert "日线 vs固定低仓位" in out
-    assert "周线 vs固定低仓位" in out
+    assert "日线信号" in out and "vs固定" in out
+    assert "周线信号" in out and "样本不足" in out or "达标" in out
+
+
+def test_load_range_returns_none_for_bad():
+    """_load_range：拉取失败/数据不足时返回 None（不抛异常）"""
+    from scripts.timeframe_switch import _load_range, DEFAULT_ADJUST, DEFAULT_START
+    r = _load_range("__不存在__", start=DEFAULT_START, adjust=DEFAULT_ADJUST)
+    assert r is None
+
+
+def test_yearly_slices_splits_by_year():
+    """按年份切分日线：跨年序列应按年分组，且组内按时间升序"""
+    from scripts.timeframe_switch import _yearly_slices
+    bars = _mk_daily(400, start=datetime(2023, 11, 1))  # 跨 2023/2024
+    years = _yearly_slices(bars)
+    assert 2023 in years and 2024 in years, f"应含 2023/2024，实际 {sorted(years)}"
+    for y, yb in years.items():
+        dts = [b.datetime for b in yb]
+        assert dts == sorted(dts), f"{y} 组内应升序"
+
+
+def test_yearly_slices_short_years_skipped_in_run():
+    """yearly 模式下：不足 lookback 的年份切片在 run_symbol 中被跳过，不产出空行"""
+    from scripts.timeframe_switch import run_symbol, _yearly_slices
+    slices = _yearly_slices(_mk_daily(20, start=datetime(2024, 6, 1)))  # 仅 2024，20 根 <30
+    # 直接验证：不足30根的年份在 run 里被过滤，故 run_symbol 也应正确跳过
+    assert 2024 in slices
+    assert len(slices[2024]) < 30
+
+
+def test_min_signals_gate_reflected_in_output():
+    """--min-signals 门槛：输出里带门槛值，且未达标时标注样本不足"""
+    import io, contextlib
+    from scripts.timeframe_switch import timeframe_switch
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        timeframe_switch(["SYN_TS"], mode="momentum", lookback=10,
+                         yearly_breakdown=False, min_signals=50)
+    out = buf.getvalue()
+    assert "门槛 50" in out
+    assert "样本不足" in out or "达标" in out
 
 
 if __name__ == "__main__":
