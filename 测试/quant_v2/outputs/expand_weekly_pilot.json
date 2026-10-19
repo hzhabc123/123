@@ -1,0 +1,101 @@
+{
+  "600519": {
+    "signals": 8,
+    "excess_vs_holdlow_pp": 1.622833272359217,
+    "excess_vs_rand_pp": 3.7668208223075634,
+    "buyhold_pp": 185.94860273063406,
+    "exposure": 0.061914272301999376,
+    "yearly": [
+      {"year": 2019, "signals": 1, "excess_vs_holdlow": 0.007858335698080084}, {"year": 2020, "signals": 1, "excess_vs_holdlow": 0.004637029696546939}, {"year": 2021, "signals": 2, "excess_vs_holdlow": 0.03686559650337833}, {"year": 2022, "signals": 2, "excess_vs_holdlow": -0.02984034894468213}, {"year": 2023, "signals": 1, "excess_vs_holdlow": 0.01553179035450098}, {"year": 2024, "signals": 2, "excess_vs_holdlow": 0.08344991796285355}
+    ],
+    "period": "2019-01-04~2024-12-31"
+  },
+  "300750": {
+    "signals": 7,
+    "excess_vs_holdlow_pp": -3.0681135743327257,
+    "excess_vs_rand_pp": 9.844096092842006,
+    "buyhold_pp": 545.0753638253639,
+    "exposure": 0.04768307074993749,
+    "yearly": [
+      {"year": 2019, "signals": 1, "excess_vs_holdlow": 0.021460864168412565}, {"year": 2020, "signals": 1, "excess_vs_holdlow": -0.008674908353115298}, {"year": 2021, "signals": 1, "excess_vs_holdlow": 0.011317919205227183}, {"year": 2022, "signals": 1, "excess_vs_holdlow": 0.03254421662672263}, {"year": 2023, "signals": 3, "excess_vs_holdlow": 0.002742069097595133}, {"year": 2024, "signals": 1, "excess_vs_holdlow": 0.12752320075837553}
+    ],
+    "period": "2019-01-04~2024-12-31"
+  },
+  "512880": {
+    "signals": 8,
+    "excess_vs_holdlow_pp": -2.1416795080435618,
+    "excess_vs_rand_pp": -2.793586937247197,
+    "buyhold_pp": 49.234693877550995,
+    "exposure": 0.02979639462554782,
+    "yearly": [
+      {"year": 2019, "signals": 1, "excess_vs_holdlow": -0.004017718371363986}, {"year": 2020, "signals": 1, "excess_vs_holdlow": 0.07182283682821967}, {"year": 2021, "signals": 0, "excess_vs_holdlow": 0.0}, {"year": 2022, "signals": 2, "excess_vs_holdlow": -0.022489989893783868}, {"year": 2023, "signals": 2, "excess_vs_holdlow": -0.0018981451088104983}, {"year": 2024, "signals": 2, "excess_vs_holdlow": -0.05935442238531085}
+    ],
+    "period": "2019-01-04~2024-12-31"
+  },
+  "588000": {
+    "signals": 11,
+    "excess_vs_holdlow_pp": -10.191027666374666,
+    "excess_vs_rand_pp": -11.408471455595954,
+    "buyhold_pp": -27.177700348432065,
+    "exposure": 0.08782112704627747,
+    "yearly": [
+      {"year": 2020, "signals": 0, "excess_vs_holdlow": 0.0}, {"year": 2021, "signals": 1, "excess_vs_holdlow": -0.017360626226129574}, {"year": 2022, "signals": 5, "excess_vs_holdlow": -0.05019715355068398}, {"year": 2023, "signals": 2, "excess_vs_holdlow": 0.014844028438659845}, {"year": 2024, "signals": 4, "excess_vs_holdlow": -0.039576453933904465}
+    ],
+    "period": "2020-11-20~2024-12-31"
+  },
+  "512100": {
+    "signals": 2,
+    "excess_vs_holdlow_pp": -3.8311886931691777,
+    "excess_vs_rand_pp": -3.9325106903973914,
+    "buyhold_pp": 348.97959183673464,
+    "exposure": 0.011521022268116392,
+    "yearly": [
+      {"year": 2019, "signals": 2, "excess_vs_holdlow": -0.0392914310393691}, {"year": 2020, "signals": 0, "excess_vs_holdlow": 0.019711251358174687}, {"year": 2021, "signals": 0, "excess_vs_holdlow": 0.0}, {"year": 2022, "signals": 0, "excess_vs_holdlow": 0.0}, {"year": 2023, "signals": 0, "excess_vs_holdlow": 0.0}, {"year": 2024, "signals": 0, "excess_vs_holdlow": 0.0}
+    ],
+    "period": "2019-01-04~2024-12-31"
+  },
+  "510880": {
+    "signals": 10,
+    "excess_vs_holdlow_pp": -1.031512762711344,
+    "excess_vs_rand_pp": -1.4871943903734692,
+    "buyhold_pp": 30.592361652377242,
+    "exposure": 0.05227189011695945,
+    "yearly": [
+      {"year": 2019, "signals": 1, "excess_vs_holdlow": -1.935051046831021e-05}, {"year": 2020, "signals": 1, "excess_vs_holdlow": 0.044506106673333524}, {"year": 2021, "signals": 2, "excess_vs_holdlow": 0.02819609571845622}, {"year": 2022, "signals": 4, "excess_vs_holdlow": -0.023057242595349706}, {"year": 2023, "signals": 1, "excess_vs_holdlow": 0.0004159502803514739}, {"year": 2024, "signals": 2, "excess_vs_holdlow": -0.04822074320387079}
+    ],
+    "period": "2019-01-04~2024-12-31"
+  },
+  "512800": {
+    "signals": 14,
+    "excess_vs_holdlow_pp": 3.0977764161441215,
+    "excess_vs_rand_pp": 3.333141326788542,
+    "buyhold_pp": 64.08839779005527,
+    "exposure": 0.055357128282061144,
+    "yearly": [
+      {"year": 2019, "signals": 2, "excess_vs_holdlow": -0.0029381387840836733}, {"year": 2020, "signals": 2, "excess_vs_holdlow": 0.022748971970893216}, {"year": 2021, "signals": 2, "excess_vs_holdlow": -0.01911215316630469}, {"year": 2022, "signals": 3, "excess_vs_holdlow": 0.001362621542967615}, {"year": 2023, "signals": 3, "excess_vs_holdlow": 0.004333048786381619}, {"year": 2024, "signals": 3, "excess_vs_holdlow": 0.040307376754413926}
+    ],
+    "period": "2019-01-04~2024-12-31"
+  },
+  "513050": {
+    "signals": 14,
+    "excess_vs_holdlow_pp": 9.298000832270624,
+    "excess_vs_rand_pp": 6.282777995365588,
+    "buyhold_pp": 12.33140655105971,
+    "exposure": 0.07582439593227511,
+    "yearly": [
+      {"year": 2019, "signals": 1, "excess_vs_holdlow": -0.01676237018350366}, {"year": 2020, "signals": 1, "excess_vs_holdlow": 0.000767216181701909}, {"year": 2021, "signals": 4, "excess_vs_holdlow": -0.010998307066069371}, {"year": 2022, "signals": 4, "excess_vs_holdlow": 0.05368242062264085}, {"year": 2023, "signals": 2, "excess_vs_holdlow": 0.011561942024601446}, {"year": 2024, "signals": 3, "excess_vs_holdlow": 0.08688264511730602}
+    ],
+    "period": "2019-01-04~2024-12-31"
+  },
+  "512170": {
+    "signals": 14,
+    "excess_vs_holdlow_pp": 1.4240355704475447,
+    "excess_vs_rand_pp": -1.346122070721801,
+    "buyhold_pp": -68.64813039309684,
+    "exposure": 0.08469585066853055,
+    "yearly": [
+      {"year": 2019, "signals": 0, "excess_vs_holdlow": 0.0}, {"year": 2020, "signals": 1, "excess_vs_holdlow": 0.00573885972290703}, {"year": 2021, "signals": 5, "excess_vs_holdlow": 0.06882965031296213}, {"year": 2022, "signals": 4, "excess_vs_holdlow": 0.04099860683684687}, {"year": 2023, "signals": 1, "excess_vs_holdlow": 0.02656613844796043}, {"year": 2024, "signals": 4, "excess_vs_holdlow": 0.0115704484127127}
+    ],
+    "period": "2019-06-21~2024-12-31"
+  }
+}
