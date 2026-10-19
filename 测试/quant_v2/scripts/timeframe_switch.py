@@ -257,8 +257,10 @@ def run_symbol(sym, mode, lookback, start, end, adjust, yearly):
 
 def timeframe_switch(symbols, mode="momentum", lookback=30, out_path=None,
                      start=DEFAULT_START, end=DEFAULT_END, adjust=DEFAULT_ADJUST,
-                     yearly_breakdown=False, min_signals=DEFAULT_MIN_SIGNALS):
-    """标注：周线只跑纯动量，是否按年份分层。"""
+                     yearly_breakdown=False, min_signals=DEFAULT_MIN_SIGNALS,
+                     clusters=None):
+    """标注：周线只跑纯动量，是否按年份分层。
+    clusters: {"簇名": [代码,...]} —— 用于输出簇×信号交叉表（扩样本周线模式）。"""
     # 周线只跑纯动量：强制 mode 语义为 momentum 用于周线
     print(f"===== 周线框架验证 v2（周线=纯动量 only，lb={lookback}，复权={adjust}）=====")
     print(f"标的数={len(symbols)}（<10 → 只报净超额均值+区间，不报 X/N）")
@@ -312,6 +314,39 @@ def timeframe_switch(symbols, mode="momentum", lookback=30, out_path=None,
             print(f"  {y}: {s} 个 {'✅' if s>=min_signals else '⚠️'}")
         tot = sum(yearly_sig.values())
         print(f"\n周线底信号合计 {tot}（门槛 {min_signals}）→ {'达标，可推断' if tot>=min_signals else '⚠️ 样本不足，不推断'}")
+
+        # 簇 × 信号交叉表（扩样本周线模式：判断信号是否集中在少数簇，衡量有效样本量）
+        if clusters:
+            print("\n===== 簇 × 标的 × 信号数 交叉表（有效样本量判定）=====")
+            print("> 独立性：信号若集中在少数簇(如宽基)，有效 n 远低于表面信号数。")
+            print("> 在场性：588000 从 2020-11 上市，2019-2020 周线空 —— 该年相关信号天然缺席，按簇统计时已含此偏差。")
+            sym_map = {r["symbol"]: r for r in rows if "error" not in r}
+            total_signals = 0
+            cluster_sig_table = []  # (簇名, 符号数, 信号数)
+            for cname, members in clusters.items():
+                crows = [sym_map[c] for c in members if c in sym_map]
+                csig = sum(r.get("weekly_bottom_signals", 0) for r in crows)
+                total_signals += csig
+                detail = ", ".join(f"{r['symbol']}:{r.get('weekly_bottom_signals',0)}" for r in crows)
+                present_years = set()
+                for r in crows:
+                    for yy in r.get("weekly_yearly", []):
+                        present_years.add(yy["year"])
+                py = "".join(str(_y) for _y in sorted(present_years))
+                print(f"  簇[{cname}] 成员[{len(crows)}] 信号{csig:>3}  ({detail})  在场年:{py}")
+                cluster_sig_table.append((cname, len(crows), csig))
+            if cluster_sig_table and total_signals > 0:
+                max_share = max(c[2] for c in cluster_sig_table) / total_signals
+                active_clusters = sum(1 for c in cluster_sig_table if c[2] > 0)
+                print(f"\n有效样本判定：信号合计 {total_signals}，活跃簇 {active_clusters}，"
+                      f"最大簇信号占比 {max_share*100:.0f}%")
+                if max_share > 0.6:
+                    verdict = "⚠️ 信号集中在单一簇，有效 n 远低于表面信号数，不推断"
+                elif active_clusters < 3:
+                    verdict = "⚠️ 活跃簇过少，独立样本不足，不推断"
+                else:
+                    verdict = "✅ 信号分布相对分散，可结合净超额判断推断强度"
+                print(f"  判定：{verdict}")
 
     # 全量模式（非 yearly）仍给归纳
     elif rows:
@@ -373,16 +408,29 @@ def main():
     if "--min-signals" in argv:
         min_signals = int(argv[argv.index("--min-signals") + 1])
     yearly = "--yearly-breakdown" in argv
+    clusters = None
+    if "--clusters" in argv:
+        try:
+            clusters = {}
+            for seg in argv[argv.index("--clusters") + 1].split(";"):
+                if ":" not in seg:
+                    continue
+                cname, membs = seg.split(":", 1)
+                clusters[cname.strip()] = [m.strip() for m in membs.split(",") if m.strip()]
+        except Exception:
+            clusters = None
     if "--symbols" in argv:
         symbols = [s.strip() for s in argv[argv.index("--symbols") + 1].split(",") if s.strip()]
     if not symbols:
         print("用法: python3 scripts/timeframe_switch.py <symbols...> "
               "[--mode momentum|both] [--lb N] [--start YYYY-MM-DD] [--end YYYY-MM-DD] "
-              "[--adjust qfq|hfq] [--yearly-breakdown] [--min-signals N] [--out f.json]")
+              "[--adjust qfq|hfq] [--yearly-breakdown] [--min-signals N] [--out f.json] "
+              "[--clusters '簇名:代码1,代码2;簇名:代码3']")
         return
     timeframe_switch(symbols, mode=mode, lookback=lookback, out_path=out_path,
                      start=start, end=end, adjust=adjust,
-                     yearly_breakdown=yearly, min_signals=min_signals)
+                     yearly_breakdown=yearly, min_signals=min_signals,
+                     clusters=clusters)
 
 
 if __name__ == "__main__":
